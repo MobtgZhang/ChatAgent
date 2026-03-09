@@ -4,6 +4,7 @@
 #include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
 #include "about.h"
+#include "locale_bridge.h"
 #include "settings.h"
 #include "history.h"
 #include "memory_module.h"
@@ -18,15 +19,20 @@ int main(int argc, char *argv[]) {
     app.setApplicationVersion("1.0.0");
 
     // ── 后端对象 ──────────────────────────────────────────────────────────────
-    About    about;
-    Settings settings;
-    History  history;
-    MainView mainView(&settings, &history);
+    About        about;
+    Settings     settings;
+    LocaleBridge locale(&settings);
+    settings.setLocaleBridge(&locale);
+    settings.refreshModels();
+    History      history(&settings);
+    MainView     mainView(&settings, &history);
 
     // ── QML 引擎 ──────────────────────────────────────────────────────────────
     QQmlApplicationEngine engine;
     QQmlContext *ctx = engine.rootContext();
     ctx->setContextProperty("about",       &about);
+    ctx->setContextProperty("locale",      &locale);
+    ctx->setContextProperty("localeBridge", &locale);  // 独立名称，避免 Qt 6 内置 locale 覆盖
     ctx->setContextProperty("settings",    &settings);
     ctx->setContextProperty("history",     &history);
     ctx->setContextProperty("mainView",    &mainView);

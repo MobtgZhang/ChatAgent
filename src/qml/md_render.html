@@ -67,6 +67,14 @@
     #content a:hover { text-decoration: underline; }
     /* KaTeX 数学公式继承文字颜色，避免默认黑色 */
     #content .katex, #content .katex * { color: inherit !important; }
+    /* Light 主题：代码块、表格、blockquote 等需浅色背景+深色文字 */
+    #content.theme-light .code-bubble-inner { background: #F5F5F7 !important; border-color: #D8D8DC !important; color: #1A1A1C !important; }
+    #content.theme-light .code-bubble-inner pre, #content.theme-light .code-bubble-inner code { color: #1A1A1C !important; background: transparent !important; }
+    #content.theme-light .code-copy-btn { color: #5C5E66 !important; }
+    #content.theme-light .code-copy-btn:hover { color: #1A1A1C !important; }
+    #content.theme-light pre { background: #F5F5F7 !important; border: 1px solid #D8D8DC; color: #1A1A1C !important; }
+    #content.theme-light blockquote { color: #5C5E66 !important; }
+    #content.theme-light th, #content.theme-light td { border-color: #D8D8DC !important; color: inherit; }
   </style>
 </head>
 <body>
@@ -197,7 +205,7 @@
       }
     }
 
-    function renderContent(md, textColor, fontSize) {
+    function renderContent(md, textColor, fontSize, isLight) {
       const el = document.getElementById('content');
       if (!el) return;
 
@@ -226,6 +234,7 @@
 
       el.style.color = textColor || '#DBDEE1';
       el.style.fontSize = (fontSize || 14) + 'px';
+      el.classList.toggle('theme-light', !!isLight);
 
       // 为代码块添加气泡样式和复制按钮
       enhanceCodeBlocks(el);

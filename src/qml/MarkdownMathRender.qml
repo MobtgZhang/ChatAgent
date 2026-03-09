@@ -9,11 +9,16 @@ Item {
     property string markdownText: ""
     property color  textColor:    "#DBDEE1"
     property int    fontSize:     14
+    property bool   isLight:      (typeof settings !== "undefined" && settings.theme === "light")
 
     implicitHeight: 100
     height: implicitHeight
 
     onMarkdownTextChanged: Qt.callLater(renderContent)
+    Connections {
+        target: typeof settings !== "undefined" ? settings : null
+        function onThemeChanged() { Qt.callLater(renderContent) }
+    }
 
     function toHexColor(c) {
         if (!c) return "#DBDEE1"
@@ -58,9 +63,11 @@ Item {
             }
             var txt = markdownText
             var fs = fontSize
+            var light = isLight
             var js = "renderContent(" + JSON.stringify(txt) + ","
                     + JSON.stringify(hex) + ","
-                    + fs + "); "
+                    + fs + ","
+                    + (light ? "true" : "false") + "); "
                     + "Math.max(20, document.getElementById('content').scrollHeight)"
             webView.runJavaScript(js, function(h) {
                 try {

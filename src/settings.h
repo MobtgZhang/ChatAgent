@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QNetworkAccessManager>
 
+class LocaleBridge;
+
 class Settings : public QObject {
     Q_OBJECT
 
@@ -26,6 +28,12 @@ class Settings : public QObject {
 
     // ── Agent 行为 ──────────────────────────────────────────────────────────────
     Q_PROPERTY(int maxToolRounds READ maxToolRounds WRITE setMaxToolRounds NOTIFY maxToolRoundsChanged)
+
+    // ── 系统设置 ────────────────────────────────────────────────────────────
+    Q_PROPERTY(QString theme          READ theme          WRITE setTheme          NOTIFY themeChanged)
+    Q_PROPERTY(QString language        READ language       WRITE setLanguage       NOTIFY languageChanged)
+    Q_PROPERTY(QString cacheDirectory READ cacheDirectory WRITE setCacheDirectory NOTIFY cacheDirectoryChanged)
+    Q_PROPERTY(bool hasConfigFile READ hasConfigFile NOTIFY hasConfigFileChanged)
 
     // ── UI ──────────────────────────────────────────────────────────────────
     // 是否显示“思考过程”
@@ -52,6 +60,10 @@ public:
     bool       showThinking() const { return m_showThinking; }
     bool       modelsRefreshing() const { return m_modelsRefreshing; }
     QString    modelsStatus() const     { return m_modelsStatus; }
+    QString    theme() const { return m_theme; }
+    QString    language() const { return m_language; }
+    QString    cacheDirectory() const { return m_cacheDirectory; }
+    bool       hasConfigFile() const;
 
     // Setters
     void setApiKey(const QString &v);
@@ -64,6 +76,14 @@ public:
     void setSystemPrompt(const QString &v);
     void setMaxToolRounds(int v);
     void setShowThinking(bool v);
+    void setTheme(const QString &v);
+    void setLanguage(const QString &v);
+    void setCacheDirectory(const QString &v);
+
+    // 将 file:// URL 转为本地路径（供 QML FolderDialog 使用）
+    Q_INVOKABLE QString urlToLocalPath(const QString &url) const;
+    // 获取默认缓存目录
+    Q_INVOKABLE QString defaultCacheDirectory() const;
 
     // Model list management
     Q_INVOKABLE void addModel(const QString &model);
@@ -73,6 +93,11 @@ public:
     // Persistence
     Q_INVOKABLE void save();
     Q_INVOKABLE void load();
+
+    // 切换语言并立即生效（供 QML 调用）
+    Q_INVOKABLE void applyLanguage(const QString &lang);
+
+    void setLocaleBridge(LocaleBridge *bridge);
 
 signals:
     void apiKeyChanged();
@@ -88,6 +113,10 @@ signals:
     void showThinkingChanged();
     void modelsRefreshingChanged();
     void modelsStatusChanged();
+    void themeChanged();
+    void languageChanged();
+    void cacheDirectoryChanged();
+    void hasConfigFileChanged();
 
 private:
     QString     m_apiKey;
@@ -105,12 +134,18 @@ private:
     int         m_maxToolRounds = 40;
     bool        m_showThinking = false;
 
+    QString     m_theme          = QStringLiteral("dark");   // "dark" | "light"
+    QString     m_language       = QStringLiteral("en");     // "en" | "zh" | "ru" | "fr"
+    QString     m_cacheDirectory;   // 空则使用默认
+
     bool        m_modelsRefreshing = false;
     QString     m_modelsStatus;
 
     QNetworkAccessManager *m_nam = nullptr;
+    LocaleBridge *m_locale = nullptr;
 
     QString settingsFilePath() const;
+    QString _tr(const QString &key, const QString &arg = QString()) const;
 };
 
 #endif // SETTINGS_H

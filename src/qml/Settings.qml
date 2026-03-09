@@ -3,28 +3,33 @@ import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import QtQuick.Window 2.15
+import QtQuick.Dialogs
 
 Window {
     id: settingsWin
-    title: "设置"
+    property var settings: null
+    title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.settingsTitle : "Settings"
     width: 640; height: 520
     minimumWidth: 560; minimumHeight: 460
-    color: "#2B2D31"
+    color: (typeof settings !== "undefined" && settings.theme === "light") ? "#FAFAFA" : "#0D0D0F"
     flags: Qt.Dialog
     modality: Qt.ApplicationModal
 
-    // ── 色板 ─────────────────────────────────────────────────────────────────
-    readonly property color cBg:     "#2B2D31"
-    readonly property color cPanel:  "#1E1F22"
-    readonly property color cInput:   "#383A40"
-    readonly property color cBorder: "#404249"
-    readonly property color cText:   "#DBDEE1"
-    readonly property color cMuted:  "#949BA4"
+    // ── 动态色板：Dark 黑底白字 / Light 白底黑字，高对比度 ──────────────────────
+    readonly property bool isLight: (typeof settings !== "undefined" && settings.theme === "light")
+    readonly property color cBg:     isLight ? "#FAFAFA" : "#0D0D0F"
+    readonly property color cPanel:  isLight ? "#F0F0F2" : "#111113"
+    readonly property color cInput:  isLight ? "#FFFFFF" : "#1C1C1F"
+    readonly property color cBorder: isLight ? "#D8D8DC" : "#2D2D32"
+    readonly property color cText:   isLight ? "#0D0D0F" : "#F2F2F4"
+    readonly property color cMuted:  isLight ? "#3D3F47" : "#8E9099"
     readonly property color cAccent:  "#5865F2"
+    readonly property color cHighlight: isLight ? "#E8E8EC" : "#252528"
+    readonly property color cPopupBg: isLight ? "#FFFFFF" : "#111113"
 
     // ── 标签选项卡 ────────────────────────────────────────────────────────────
     property int currentTab: 0
-    readonly property var tabs: ["🔑 API 配置", "⚙️ 参数调节", "📝 系统提示词", "🤖 Agent 设置"]
+    readonly property var tabs: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? ["🔑 " + localeBridge.t.tabApiConfigEmoji, "⚙️ " + localeBridge.t.tabParamsEmoji, "📝 " + localeBridge.t.tabSystemPromptEmoji, "🤖 " + localeBridge.t.tabAgentEmoji, "⚙️ " + localeBridge.t.tabSystemSettingsEmoji] : ["API Config", "Parameters", "System Prompt", "Agent", "System"]
 
     ColumnLayout {
         anchors.fill: parent
@@ -92,8 +97,8 @@ Window {
 
                     // API Key
                     SectionBox {
-                        label: "API Key"
-                        hint:  "用于鉴权的 Bearer token"
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.apiKey : "API Key"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.apiKeyHint : ""
                         FieldInput {
                             id: apiKeyField
                             Layout.fillWidth: true
@@ -102,7 +107,7 @@ Window {
                             onEditingFinished: settings.apiKey = text
                         }
                         Button {
-                            text: apiKeyField.echoMode === TextInput.Password ? "👁 显示" : "🔒 隐藏"
+                            text: apiKeyField.echoMode === TextInput.Password ? ("👁 " + (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 ? localeBridge.t.show : "Show")) : ("🔒 " + (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 ? localeBridge.t.hide : "Hide"))
                             height: 30
                             contentItem: Text {
                                 text: parent.text; color: cMuted; font.pixelSize: 12
@@ -118,8 +123,8 @@ Window {
 
                     // API URL
                     SectionBox {
-                        label: "API 地址"
-                        hint:  "兼容 OpenAI 格式的接口地址"
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.apiUrl : "API URL"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.apiUrlHint : ""
                         FieldInput {
                             Layout.fillWidth: true
                             text: settings.apiUrl
@@ -129,8 +134,8 @@ Window {
 
                     // 模型选择
                     SectionBox {
-                        label: "模型"
-                        hint:  "当前使用的模型名称"
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.model : "Model"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.modelHint : ""
 
                         ComboBox {
                             Layout.fillWidth: true
@@ -148,7 +153,21 @@ Window {
                                 verticalAlignment: Text.AlignVCenter
                             }
                             background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
-                            popup.background: Rectangle { color: cPanel; radius: 5; border.color: cBorder }
+                            popup.background: Rectangle { color: cPopupBg; radius: 5; border.color: cBorder }
+                            delegate: ItemDelegate {
+                                width: parent ? parent.width - 20 : 200
+                                contentItem: Text {
+                                    text: modelData
+                                    color: cText
+                                    font.pixelSize: 13
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: parent.highlighted ? cHighlight : "transparent"
+                                    radius: 4
+                                }
+                            }
                         }
 
                         ColumnLayout {
@@ -157,7 +176,7 @@ Window {
 
                             Button {
                                 Layout.alignment: Qt.AlignLeft
-                                text: "从 API 刷新模型列表"
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.refreshModels : "Refresh models"
                                 height: 30
                                 enabled: !settings.modelsRefreshing
                                 contentItem: Text {
@@ -200,7 +219,7 @@ Window {
 
                     SliderSection {
                         label: "Temperature"
-                        hint:  "控制随机性，越大越有创意 (0.0 – 1.0)"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.temperatureHint : ""
                         value: settings.temperature
                         from: 0.0; to: 1.0; stepSize: 0.05
                         scrollView: paramsTuningScroll
@@ -208,7 +227,7 @@ Window {
                     }
                     SliderSection {
                         label: "Top-P"
-                        hint:  "核采样阈值 (0.0 – 1.0)"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.topPHint : ""
                         value: settings.topP
                         from: 0.0; to: 1.0; stepSize: 0.01
                         scrollView: paramsTuningScroll
@@ -216,15 +235,15 @@ Window {
                     }
                     SliderSection {
                         label: "Top-K"
-                        hint:  "每步候选 token 数量 (1 – 200)"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.topKHint : ""
                         value: settings.topK
                         from: 1; to: 200; stepSize: 1
                         scrollView: paramsTuningScroll
                         onMoved: function(value) { settings.topK = value }
                     }
                     SliderSection {
-                        label: "Max Tokens"
-                        hint:  "最大生成 token 数 (256 – 32768)"
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.maxTokens : "Max Tokens"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.maxTokensHint : ""
                         value: settings.maxTokens
                         from: 256; to: 32768; stepSize: 256
                         scrollView: paramsTuningScroll
@@ -244,11 +263,11 @@ Window {
                 spacing: 12
 
                 Text {
-                    text: "System Prompt"
+                    text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.systemPrompt : "System Prompt"
                     color: cText; font.pixelSize: 13; font.bold: true
                 }
                 Text {
-                    text: "对话开始前注入的角色设定，对所有新对话生效"
+                    text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.systemPromptDesc : ""
                     color: cMuted; font.pixelSize: 12
                 }
 
@@ -276,7 +295,7 @@ Window {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: "留空时使用内置默认提示词（物理级执行者、探测优先、失败升级）"
+                    text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.systemPromptEmptyHint : ""
                     color: cMuted; font.pixelSize: 11; wrapMode: Text.Wrap
                 }
             }
@@ -297,8 +316,8 @@ Window {
                     spacing: 18
 
                     SliderSection {
-                        label: "工具调用轮次上限"
-                        hint:  "单次任务内可执行的工具调用最大轮数，支持长任务链。"
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.maxToolRounds : "Max tool rounds"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.maxToolRoundsHint : ""
                         value: settings.maxToolRounds
                         from: 5; to: 40; stepSize: 1
                         scrollView: agentScrollView
@@ -306,8 +325,180 @@ Window {
                     }
 
                     SectionBox {
-                        label: "行动原则"
-                        hint:  "Agent 采用探测优先、失败升级、立即执行的设计。在「系统提示词」tab 可自定义覆盖。"
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.actionPrinciple : "Action Principle"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.actionPrincipleHint : ""
+                    }
+
+                    Item { height: 20 }
+                }
+            }
+
+            // ── Tab 4: 系统设置 ────────────────────────────────────────────────────
+            ScrollView {
+                id: systemScrollView
+                anchors.fill: parent
+                clip: true
+                contentWidth: availableWidth
+                visible: settingsWin.currentTab === 4
+                enabled: visible
+
+                ColumnLayout {
+                    width: parent.width - 40
+                    x: 20
+                    y: 20
+                    spacing: 18
+
+                    // 主题设置（Dark / Light，Radio 按钮）
+                    SectionBox {
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.themeSettings : "Theme"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.themeSettingsHint : ""
+                        Row {
+                            spacing: 16
+                            RadioButton {
+                                id: themeDark
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.themeDark : "Dark"
+                                checked: (typeof settings !== "undefined" && settings.theme !== "light")
+                                onCheckedChanged: if (checked && typeof settings !== "undefined") settings.theme = "dark"
+                                contentItem: Text {
+                                    text: themeDark.text
+                                    color: cText
+                                    font.pixelSize: 13
+                                    leftPadding: themeDark.indicator.width + themeDark.spacing
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                indicator: Rectangle {
+                                    implicitWidth: 18
+                                    implicitHeight: 18
+                                    radius: 9
+                                    border.color: themeDark.checked ? cAccent : cBorder
+                                    border.width: 2
+                                    color: themeDark.checked ? cAccent : "transparent"
+                                    Rectangle {
+                                        width: 8
+                                        height: 8
+                                        radius: 4
+                                        anchors.centerIn: parent
+                                        color: themeDark.checked ? "white" : "transparent"
+                                    }
+                                }
+                            }
+                            RadioButton {
+                                id: themeLight
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.themeLight : "Light"
+                                checked: (typeof settings !== "undefined" && settings.theme === "light")
+                                onCheckedChanged: if (checked && typeof settings !== "undefined") settings.theme = "light"
+                                contentItem: Text {
+                                    text: themeLight.text
+                                    color: cText
+                                    font.pixelSize: 13
+                                    leftPadding: themeLight.indicator.width + themeLight.spacing
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                indicator: Rectangle {
+                                    implicitWidth: 18
+                                    implicitHeight: 18
+                                    radius: 9
+                                    border.color: themeLight.checked ? cAccent : cBorder
+                                    border.width: 2
+                                    color: themeLight.checked ? cAccent : "transparent"
+                                    Rectangle {
+                                        width: 8
+                                        height: 8
+                                        radius: 4
+                                        anchors.centerIn: parent
+                                        color: themeLight.checked ? "white" : "transparent"
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 语言设置（动态探测翻译文件夹，英文排最前；无配置时仅显示英语）
+                    SectionBox {
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.languageSettings : "Language"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.languageSettingsHint : ""
+                        ComboBox {
+                            id: langCombo
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 36
+                            readonly property var langList: (localeBridge && settings) ? (settings.hasConfigFile, localeBridge.availableLanguageList()) : []
+                            model: langList
+                            property int _sel: {
+                                if (!model || model.length === 0) return 0
+                                var lang = (typeof settings !== "undefined") ? settings.language : "en"
+                                for (var i = 0; i < model.length; i++)
+                                    if (model[i] && model[i].code === lang) return i
+                                return 0
+                            }
+                            currentIndex: (model && model.length > 0) ? Math.min(_sel, model.length - 1) : 0
+                            onActivated: function(index) {
+                                if (typeof settings !== "undefined" && settings.applyLanguage && model && model[index])
+                                    settings.applyLanguage(model[index].code)
+                            }
+                            contentItem: Text {
+                                leftPadding: 10
+                                text: (langCombo.model && langCombo.currentIndex >= 0 && langCombo.currentIndex < langCombo.model.length && langCombo.model[langCombo.currentIndex])
+                                      ? langCombo.model[langCombo.currentIndex].name : ""
+                                color: cText
+                                font.pixelSize: 13
+                                verticalAlignment: Text.AlignVCenter
+                            }
+                            background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
+                            popup.background: Rectangle { color: cPopupBg; radius: 5; border.color: cBorder }
+                            delegate: ItemDelegate {
+                                width: parent ? parent.width - 20 : 200
+                                contentItem: Text {
+                                    text: modelData ? modelData.name : ""
+                                    color: cText
+                                    font.pixelSize: 13
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle {
+                                    color: parent.highlighted ? cHighlight : "transparent"
+                                    radius: 4
+                                }
+                            }
+                        }
+                    }
+
+                    // 缓存目录设置（历史记录与会话配置存储位置）
+                    SectionBox {
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cacheDirSettings : "Cache Directory"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cacheDirHint : ""
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            FieldInput {
+                                id: cacheDirField
+                                Layout.fillWidth: true
+                                text: (typeof settings !== "undefined") ? settings.cacheDirectory : ""
+                                placeholderText: (typeof settings !== "undefined") ? settings.defaultCacheDirectory() : ""
+                                onEditingFinished: {
+                                    if (typeof settings !== "undefined")
+                                        settings.cacheDirectory = text.trim()
+                                }
+                            }
+                            Button {
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cacheDirBrowse : "Browse"
+                                height: 36
+                                contentItem: Text {
+                                    text: parent.text
+                                    color: cMuted
+                                    font.pixelSize: 12
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
+                                onClicked: cacheFolderDialog.open()
+                            }
+                        }
+                        Text {
+                            text: ((localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cacheDirDefault : "Default") + ": " + (typeof settings !== "undefined" ? settings.defaultCacheDirectory() : "")
+                            color: cMuted
+                            font.pixelSize: 11
+                            wrapMode: Text.Wrap
+                        }
                     }
 
                     Item { height: 20 }
@@ -330,7 +521,7 @@ Window {
                 spacing: 10
 
                 Button {
-                    text: "重置默认"; height: 34
+                    text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.resetDefault : "Reset"; height: 34
                     contentItem: Text {
                         text: parent.text; color: cMuted; font.pixelSize: 13
                         horizontalAlignment: Text.AlignHCenter
@@ -347,11 +538,15 @@ Window {
                         settings.systemPrompt  = ""
                         settings.maxToolRounds = 40
                         settings.showThinking  = false
+                        if (settings.applyLanguage) settings.applyLanguage("en")
+                        else { settings.language = "en"; settings.save() }
+                        settings.theme         = "dark"
+                        settings.cacheDirectory = ""
                         settings.save()
                     }
                 }
                 Button {
-                    text: "保存关闭"; height: 34
+                    text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.saveClose : "Save & Close"; height: 34
                     contentItem: Text {
                         text: parent.text; color: "white"; font.pixelSize: 13
                         horizontalAlignment: Text.AlignHCenter
@@ -360,6 +555,22 @@ Window {
                     background: Rectangle { radius: 5; color: cAccent }
                     onClicked: { settings.save(); settingsWin.close() }
                 }
+            }
+        }
+    }
+
+    // 缓存目录选择对话框
+    FolderDialog {
+        id: cacheFolderDialog
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.selectCacheDir : "Select cache directory"
+        currentFolder: (typeof settings !== "undefined" && settings.cacheDirectory)
+            ? "file://" + settings.cacheDirectory
+            : "file://" + (typeof settings !== "undefined" ? settings.defaultCacheDirectory() : "/")
+        onAccepted: {
+            if (typeof settings !== "undefined" && selectedFolder) {
+                var path = settings.urlToLocalPath(selectedFolder.toString())
+                settings.cacheDirectory = path
+                cacheDirField.text = path
             }
         }
     }

@@ -6,15 +6,17 @@ import QtQuick.Layouts 1.15
 Rectangle {
     id: root
     width: 280
-    color: "#1E1F22"
+    color: (typeof settings !== "undefined" && settings.theme === "light") ? "#F0F0F2" : "#111113"
     clip: true
 
-    readonly property color cText: "#DBDEE1"
-    readonly property color cMuted: "#949BA4"
-    readonly property color cAccent: "#5865F2"
-    readonly property color cInput: "#383A40"
-    readonly property color cBorder: "#3F4147"
-    readonly property color cHighlight: "#404249"
+    readonly property bool isLight: (typeof settings !== "undefined" && settings.theme === "light")
+    readonly property color cText:     isLight ? "#0D0D0F" : "#F2F2F4"
+    readonly property color cMuted:    isLight ? "#3D3F47" : "#8E9099"
+    readonly property color cAccent:   "#5865F2"
+    readonly property color cInput:    isLight ? "#FFFFFF" : "#1C1C1F"
+    readonly property color cBorder:   isLight ? "#D8D8DC" : "#2D2D32"
+    readonly property color cHighlight: isLight ? "#E8E8EC" : "#252528"
+    readonly property color cPopupBg: isLight ? "#FFFFFF" : "#111113"
 
     ColumnLayout {
         anchors.fill: parent
@@ -248,7 +250,7 @@ Rectangle {
         modal: true
         anchors.centerIn: parent
         width: 300
-        background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+        background: Rectangle { color: cPopupBg; radius: 8; border.color: cBorder }
         contentItem: Text {
             text: "确定要清空所有长期记忆吗？此操作不可撤销。"
             color: cText

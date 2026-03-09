@@ -10,16 +10,23 @@ ApplicationWindow {
     minimumWidth: 800; minimumHeight: 560
     visible: true
     title: "ChatAgent — " + mainView.sessionName
-    color: "#2B2D31"
-    // ── 全局色板（参考 chat-agent）──────────────────────────────────────────────
-    readonly property color cBg:        "#2B2D31"
-    readonly property color cSidebar:   "#1E1F22"
-    readonly property color cInput:     "#383A40"
-    readonly property color cBorder:    "#3F4147"
-    readonly property color cHighlight: "#404249"
-    readonly property color cText:      "#DBDEE1"
-    readonly property color cMuted:     "#949BA4"
+    color: (typeof settings !== "undefined" && settings.theme === "light") ? "#FAFAFA" : "#0D0D0F"
+    // ── 动态色板：Dark 黑底白字 / Light 白底黑字，高对比度 ──────────────────────
+    readonly property bool isLight:     (typeof settings !== "undefined" && settings.theme === "light")
+    readonly property color cBg:        isLight ? "#FAFAFA" : "#0D0D0F"
+    readonly property color cSidebar:   isLight ? "#F0F0F2" : "#111113"
+    readonly property color cInput:     isLight ? "#FFFFFF" : "#1C1C1F"
+    readonly property color cBorder:    isLight ? "#D8D8DC" : "#2D2D32"
+    readonly property color cHighlight: isLight ? "#E8E8EC" : "#252528"
+    readonly property color cText:      isLight ? "#0D0D0F" : "#F2F2F4"
+    readonly property color cMuted:     isLight ? "#3D3F47" : "#8E9099"
     readonly property color cAccent:    "#5865F2"
+    readonly property color cDivider:   isLight ? "#E0E0E4" : "#2E3035"
+    readonly property color cSelectedBg: isLight ? "#E0E4F8" : "#3D4270"
+    readonly property color cScrollBar: isLight ? "#C0C2C8" : "#484B52"
+    readonly property color cScrollBarHover: isLight ? "#A0A2A8" : "#60636A"
+    // 弹窗/菜单背景：Light 模式下用纯白以提升对比度
+    readonly property color cPopupBg: isLight ? "#FFFFFF" : "#111113"
 
     // ── 弹窗（懒创建）────────────────────────────────────────────────────────
     property var settingsWin: null
@@ -29,7 +36,7 @@ ApplicationWindow {
         if (!settingsWin) {
             var comp = Qt.createComponent("qrc:/src/qml/Settings.qml")
             if (comp.status === Component.Ready) {
-                settingsWin = comp.createObject(appWindow)
+                settingsWin = comp.createObject(appWindow, { "settings": settings })
             } else if (comp.status === Component.Error) {
                 console.error("❌ Settings.qml 加载失败:", comp.errorString())
                 return
@@ -63,17 +70,17 @@ ApplicationWindow {
     // ── 清空确认对话框 ────────────────────────────────────────────────────────
     Dialog {
         id: clearDialog
-        title: "清空对话"
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.clearChat : "Clear Chat"
         modal: true
         anchors.centerIn: parent
         width: 300
 
-        background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+        background: Rectangle { color: cPopupBg; radius: 8; border.color: cBorder }
 
         contentItem: Column {
             spacing: 12; padding: 16
             Text {
-                text: "确定要清空当前对话记录吗？\n此操作不可撤销。"
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.clearChatConfirm) ? localeBridge.t.clearChatConfirm : "Are you sure to clear this chat? This cannot be undone."
                 color: cText; font.pixelSize: 14; lineHeight: 1.5; wrapMode: Text.Wrap
                 width: 260
             }
@@ -82,14 +89,14 @@ ApplicationWindow {
         footer: Row {
             spacing: 8; padding: 12; layoutDirection: Qt.RightToLeft
             Button {
-                text: "清空"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.clear) ? localeBridge.t.clear : "Clear"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: "#ED4245" }
                 onClicked: { mainView.clearMessages(); clearDialog.close() }
             }
             Button {
-                text: "取消"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cancel : "Cancel"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: cText; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
@@ -101,7 +108,7 @@ ApplicationWindow {
     // ── 删除确认对话框 ────────────────────────────────────────────────────────
     Dialog {
         id: deleteNodeDialog
-        title: "删除"
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.delete : "Delete"
         modal: true
         anchors.centerIn: parent
         width: 320
@@ -110,14 +117,14 @@ ApplicationWindow {
         property string targetName: ""
         property string targetType: ""
 
-        background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+        background: Rectangle { color: cPopupBg; radius: 8; border.color: cBorder }
 
         contentItem: Column {
             spacing: 12; padding: 16
             Text {
-                text: (deleteNodeDialog.targetType === "folder"
-                       ? "确定要删除文件夹「" + deleteNodeDialog.targetName + "」吗？\n其内的所有对话和子文件夹也将被删除。此操作不可撤销。"
-                       : "确定要删除对话「" + deleteNodeDialog.targetName + "」吗？\n此操作不可撤销。")
+                text: (localeBridge && localeBridge.lang) ? (deleteNodeDialog.targetType === "folder"
+                       ? localeBridge.tr("deleteFolderConfirm", deleteNodeDialog.targetName)
+                       : localeBridge.tr("deleteSessionConfirm", deleteNodeDialog.targetName)) : deleteNodeDialog.targetName
                 color: cText; font.pixelSize: 14; lineHeight: 1.5; wrapMode: Text.Wrap
                 width: 280
             }
@@ -126,7 +133,7 @@ ApplicationWindow {
         footer: Row {
             spacing: 8; padding: 12; layoutDirection: Qt.RightToLeft
             Button {
-                text: "删除"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.delete : "Delete"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: "#ED4245" }
@@ -137,7 +144,7 @@ ApplicationWindow {
                 }
             }
             Button {
-                text: "取消"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cancel : "Cancel"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: cText; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
@@ -149,16 +156,16 @@ ApplicationWindow {
     // ── 重命名输入框 ──────────────────────────────────────────────────────────
     Dialog {
         id: renameDialog
-        title: "重命名"
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.rename : "Rename"
         modal: true
         anchors.centerIn: parent
         width: 320
 
-        background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+        background: Rectangle { color: cPopupBg; radius: 8; border.color: cBorder }
 
         contentItem: Column {
             spacing: 10; padding: 16
-            Text { text: "请输入新名称："; color: cText; font.pixelSize: 13 }
+            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.enterNewName) ? localeBridge.t.enterNewName : "Enter new name:"; color: cText; font.pixelSize: 13 }
             TextField {
                 id: renameField
                 width: 280; height: 36
@@ -173,14 +180,14 @@ ApplicationWindow {
         footer: Row {
             spacing: 8; padding: 12; layoutDirection: Qt.RightToLeft
             Button {
-                text: "确定"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.ok : "OK"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cAccent }
                 onClicked: { mainView.renameSession(renameField.text); renameDialog.close() }
             }
             Button {
-                text: "取消"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cancel : "Cancel"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: cText; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
@@ -198,11 +205,11 @@ ApplicationWindow {
     // ── 导出文件选择对话框 ────────────────────────────────────────────────────
     FileDialog {
         id: exportFileDialog
-        title: "导出对话"
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.exportChat : "Export Chat"
         fileMode: FileDialog.SaveFile
         nameFilters: ["Markdown (*.md)"]
         defaultSuffix: "md"
-        acceptLabel: "保存"
+        acceptLabel: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.save : "Save"
         onAccepted: {
             var path = selectedFile.toString()
             var ok = mainView.exportCurrentChat(path)
@@ -214,21 +221,19 @@ ApplicationWindow {
     // ── 导出结果提示对话框 ────────────────────────────────────────────────────
     Dialog {
         id: exportResultDialog
-        title: exportResultDialog.isSuccess ? "保存成功" : "保存失败"
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? (exportResultDialog.isSuccess ? localeBridge.t.exportSuccess : localeBridge.t.exportFailed) : (exportResultDialog.isSuccess ? "Export successful" : "Export failed")
         modal: true
         anchors.centerIn: parent
         width: 300
 
         property bool isSuccess: true
 
-        background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+        background: Rectangle { color: cPopupBg; radius: 8; border.color: cBorder }
 
         contentItem: Column {
             spacing: 12; padding: 16
             Text {
-                text: exportResultDialog.isSuccess
-                      ? "对话已导出为 Markdown 文件。"
-                      : "无法写入文件，请检查路径或权限。"
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? (exportResultDialog.isSuccess ? localeBridge.t.exportSuccessMsg : localeBridge.t.exportFailedMsg) : (exportResultDialog.isSuccess ? "Chat exported as Markdown file." : "Cannot write file. Please check path or permissions.")
                 color: cText; font.pixelSize: 14; lineHeight: 1.5; wrapMode: Text.Wrap
                 width: 260
             }
@@ -237,7 +242,7 @@ ApplicationWindow {
         footer: Row {
             spacing: 8; padding: 12; layoutDirection: Qt.RightToLeft
             Button {
-                text: "确定"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.ok : "OK"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cAccent }
@@ -249,18 +254,18 @@ ApplicationWindow {
     // ── 新建文件夹对话框 ──────────────────────────────────────────────────────
     Dialog {
         id: folderDialog
-        title: "新建文件夹"
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.newFolder : "New Folder"
         modal: true
         anchors.centerIn: parent
         width: 320
 
         property string parentId: ""
 
-        background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+        background: Rectangle { color: cPopupBg; radius: 8; border.color: cBorder }
 
         contentItem: Column {
             spacing: 10; padding: 16
-            Text { text: "文件夹名称："; color: cText; font.pixelSize: 13 }
+            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.folderName) ? localeBridge.t.folderName : "Folder name:"; color: cText; font.pixelSize: 13 }
             TextField {
                 id: folderNameField
                 width: 280; height: 36
@@ -280,7 +285,7 @@ ApplicationWindow {
         footer: Row {
             spacing: 8; padding: 12; layoutDirection: Qt.RightToLeft
             Button {
-                text: "创建"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.create : "Create"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cAccent }
@@ -292,7 +297,7 @@ ApplicationWindow {
                 }
             }
             Button {
-                text: "取消"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cancel : "Cancel"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: cText; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
@@ -337,7 +342,7 @@ ApplicationWindow {
                             Text { text: "Community Edition"; color: cMuted; font.pixelSize: 10 }
                         }
                     }
-                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#2E3035" }
+                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: cDivider }
                 }
 
                 // 新建按钮行
@@ -352,11 +357,11 @@ ApplicationWindow {
                         // 新对话
                         Rectangle {
                             Layout.fillWidth: true; height: 30; radius: 5
-                            color: newChatHover.hovered ? cHighlight : "#2E3035"
+                            color: newChatHover.hovered ? cHighlight : cDivider
                             Row {
                                 anchors.centerIn: parent; spacing: 6
                                 Text { text: "✏️"; font.pixelSize: 13 }
-                                Text { text: "新对话"; color: cText; font.pixelSize: 12 }
+                                Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.newChat : "New Chat"; color: cText; font.pixelSize: 12 }
                             }
                             HoverHandler { id: newChatHover }
                             MouseArea {
@@ -368,9 +373,9 @@ ApplicationWindow {
                         // 新建文件夹
                         Rectangle {
                             width: 30; height: 30; radius: 5
-                            color: folderHover.hovered ? cHighlight : "#2E3035"
+                            color: folderHover.hovered ? cHighlight : cDivider
                             Text { anchors.centerIn: parent; text: "📁"; font.pixelSize: 15 }
-                            ToolTip.text: "新建文件夹"
+                            ToolTip.text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.newFolderInMenu : "New Folder"
                             ToolTip.visible: folderHover.hovered
                             ToolTip.delay: 600
                             HoverHandler { id: folderHover }
@@ -399,11 +404,11 @@ ApplicationWindow {
                         contentItem: Rectangle {
                             implicitWidth: 6
                             radius: 3
-                            color: parent.pressed ? "#60636A" : (parent.hovered ? "#60636A" : "#484B52")
+                            color: parent.pressed ? cScrollBarHover : (parent.hovered ? cScrollBarHover : cScrollBar)
                         }
                         background: Rectangle {
                             implicitWidth: 6
-                            color: "#2E3035"
+                            color: cDivider
                             radius: 3
                         }
                     }
@@ -438,7 +443,7 @@ ApplicationWindow {
                             radius: 5
                             color: {
                                 if (dropArea.containsDrag && validDropTarget) return cAccent + "40"
-                                if (isCurrent) return "#3D4270"
+                                if (isCurrent) return cSelectedBg
                                 if (itemHover.hovered) return cHighlight
                                 return "transparent"
                             }
@@ -453,7 +458,7 @@ ApplicationWindow {
                                     text: "⋮⋮"
                                     font.pixelSize: 12
                                     color: cMuted
-                                    opacity: itemHover.hovered ? 1 : 0.4
+                                    opacity: itemHover.hovered ? 1 : (isLight ? 0.7 : 0.4)
                                     Layout.preferredWidth: 16
                                     horizontalAlignment: Text.AlignHCenter
                                     MouseArea {
@@ -479,7 +484,7 @@ ApplicationWindow {
                                 Text {
                                     Layout.fillWidth: true
                                     text: nodeName
-                                    color: isCurrent ? "white" : cText
+                                    color: isCurrent ? (isLight ? cText : "white") : cText
                                     font.pixelSize: 12; font.bold: isCurrent
                                     elide: Text.ElideRight
                                 }
@@ -562,7 +567,7 @@ ApplicationWindow {
                     }
                 }
 
-                Rectangle { Layout.fillWidth: true; height: 1; color: "#2E3035" }
+                Rectangle { Layout.fillWidth: true; height: 1; color: cDivider }
 
                 // ── Agent Memory（自动总结的记忆，可删除）───────────────────────────
                 ColumnLayout {
@@ -571,7 +576,7 @@ ApplicationWindow {
                     spacing: 6
 
                     Text {
-                        text: "🧠 Agent Memory（自动总结）"
+                        text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? ("🧠 " + localeBridge.t.agentMemory) : "Agent Memory"
                         color: cText
                         font.pixelSize: 13
                         font.bold: true
@@ -645,7 +650,7 @@ ApplicationWindow {
                         Row {
                             anchors.centerIn: parent
                             spacing: 4
-                            Text { text: "清空全部记忆"; color: "#ED4245"; font.pixelSize: 11 }
+                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.clearAllMemory : ""; color: "#ED4245"; font.pixelSize: 11 }
                         }
                         HoverHandler { id: memClearHover }
                         MouseArea {
@@ -659,13 +664,13 @@ ApplicationWindow {
                 // 清空记忆确认对话框
                 Dialog {
                     id: memClearDialog
-                    title: "清空 Agent 记忆"
+                    title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.clearAgentMemory : "Clear Agent Memory"
                     modal: true
                     anchors.centerIn: parent
                     width: 300
-                    background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+                    background: Rectangle { color: cPopupBg; radius: 8; border.color: cBorder }
                     contentItem: Text {
-                        text: "确定要清空所有长期记忆吗？此操作不可撤销。"
+                        text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.clearMemoryConfirm : ""
                         color: cText
                         font.pixelSize: 13
                     }
@@ -673,7 +678,7 @@ ApplicationWindow {
                         spacing: 8
                         layoutDirection: Qt.RightToLeft
                         Button {
-                            text: "清空"
+                            text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.clear : "Clear"
                             width: 80
                             height: 32
                             contentItem: Text {
@@ -691,7 +696,7 @@ ApplicationWindow {
                             }
                         }
                         Button {
-                            text: "取消"
+                            text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cancel : "Cancel"
                             width: 80
                             height: 32
                             contentItem: Text {
@@ -707,7 +712,7 @@ ApplicationWindow {
                     }
                 }
 
-                Rectangle { Layout.fillWidth: true; height: 1; color: "#2E3035" }
+                Rectangle { Layout.fillWidth: true; height: 1; color: cDivider }
 
                 // ── 底部按钮 ──────────────────────────────────────────────────
                 Column {
@@ -718,8 +723,8 @@ ApplicationWindow {
 
                     Repeater {
                         model: [
-                            { icon: "⚙️", label: "设置",         action: "settings" },
-                            { icon: "ℹ️", label: "关于 v1.0.0",  action: "about"    }
+                            { icon: "⚙️", key: "settings", action: "settings" },
+                            { icon: "ℹ️", key: "about", action: "about" }
                         ]
                         delegate: Rectangle {
                             width: parent.width - 16; height: 36; radius: 5
@@ -728,7 +733,7 @@ ApplicationWindow {
                                 anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 10 }
                                 spacing: 10
                                 Text { text: modelData.icon;  color: cMuted; font.pixelSize: 15 }
-                                Text { text: modelData.label; color: cText;  font.pixelSize: 12 }
+                                Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t[modelData.key]) ? localeBridge.t[modelData.key] : modelData.key; color: cText;  font.pixelSize: 12 }
                             }
                             HoverHandler { id: sideHover }
                             MouseArea {
@@ -758,7 +763,7 @@ ApplicationWindow {
 
                 RowLayout {
                     anchors { fill: parent; leftMargin: 20; rightMargin: 16 }
-                    spacing: 8
+                    spacing: 12
 
                     // 会话名（双击重命名）
                     Text {
@@ -771,7 +776,7 @@ ApplicationWindow {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                             onDoubleClicked: renameDialog.open()
                         }
-                        ToolTip.text: "双击重命名"
+                        ToolTip.text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.doubleClickRename : "Double-click to rename"
                         ToolTip.visible: nameTipHover.hovered
                         ToolTip.delay: 800
                         HoverHandler { id: nameTipHover }
@@ -779,13 +784,17 @@ ApplicationWindow {
 
                     // 停止生成
                     Rectangle {
-                        width: 80; height: 30; radius: 5
+                        height: 30; radius: 5
+                        width: stopRow.implicitWidth + 24
+                        Layout.minimumWidth: stopRow.implicitWidth + 24
                         visible: mainView.isStreaming
                         color: "#ED4245"
                         Row {
-                            anchors.centerIn: parent; spacing: 5
+                            id: stopRow
+                            anchors.centerIn: parent
+                            spacing: 5
                             Text { text: "⏹"; font.pixelSize: 12 }
-                            Text { text: "停止"; color: "white"; font.pixelSize: 12 }
+                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.stop : "Stop"; color: "white"; font.pixelSize: 12 }
                         }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -795,12 +804,16 @@ ApplicationWindow {
 
                     // 清空对话
                     Rectangle {
-                        width: 80; height: 30; radius: 5
+                        height: 30; radius: 5
+                        width: clearRow.implicitWidth + 24
+                        Layout.minimumWidth: clearRow.implicitWidth + 24
                         color: clearHover.hovered ? "#ED4245" : cHighlight
                         Row {
-                            anchors.centerIn: parent; spacing: 5
+                            id: clearRow
+                            anchors.centerIn: parent
+                            spacing: 5
                             Text { text: "🗑️"; font.pixelSize: 12 }
-                            Text { text: "清空"; color: cText; font.pixelSize: 12 }
+                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.clear : "Clear"; color: cText; font.pixelSize: 12 }
                         }
                         HoverHandler { id: clearHover }
                         MouseArea {
@@ -811,21 +824,25 @@ ApplicationWindow {
 
                     // 显示/隐藏思考过程
                     Rectangle {
-                        width: 110; height: 30; radius: 5
+                        height: 30; radius: 5
+                        width: thinkRow.implicitWidth + 24
+                        Layout.minimumWidth: thinkRow.implicitWidth + 24
                         color: thinkToggleHover.hovered
                             ? Qt.lighter(cHighlight, 1.12)
-                            : (settings.showThinking ? "#3D4270" : cHighlight)
+                            : (settings.showThinking ? cSelectedBg : cHighlight)
                         border.color: settings.showThinking ? cAccent : "transparent"
                         Row {
-                            anchors.centerIn: parent; spacing: 6
+                            id: thinkRow
+                            anchors.centerIn: parent
+                            spacing: 6
                             Text { text: "🧠"; font.pixelSize: 12 }
                             Text {
-                                text: settings.showThinking ? "思考：开" : "思考：关"
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? (settings.showThinking ? localeBridge.t.thinkingOn : localeBridge.t.thinkingOff) : (settings.showThinking ? "Thinking: On" : "Thinking: Off")
                                 color: cText
                                 font.pixelSize: 12
                             }
                         }
-                        ToolTip.text: settings.showThinking ? "点击隐藏思考过程" : "点击显示思考过程"
+                        ToolTip.text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? (settings.showThinking ? localeBridge.t.thinkingTooltipOn : localeBridge.t.thinkingTooltipOff) : (settings.showThinking ? "Click to hide thinking" : "Click to show thinking")
                         ToolTip.visible: thinkToggleHover.hovered
                         ToolTip.delay: 600
                         HoverHandler { id: thinkToggleHover }
@@ -837,14 +854,18 @@ ApplicationWindow {
 
                     // 导出对话（右上角）
                     Rectangle {
-                        width: 70; height: 30; radius: 5
+                        height: 30; radius: 5
+                        width: exportRow.implicitWidth + 24
+                        Layout.minimumWidth: exportRow.implicitWidth + 24
                         color: exportHover.hovered ? Qt.lighter(cHighlight, 1.12) : cHighlight
                         Row {
-                            anchors.centerIn: parent; spacing: 5
+                            id: exportRow
+                            anchors.centerIn: parent
+                            spacing: 5
                             Text { text: "📤"; font.pixelSize: 12 }
-                            Text { text: "导出"; color: cText; font.pixelSize: 12 }
+                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.export : "Export"; color: cText; font.pixelSize: 12 }
                         }
-                        ToolTip.text: "导出当前对话为 Markdown"
+                        ToolTip.text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.exportChat : "Export Chat"
                         ToolTip.visible: exportHover.hovered
                         ToolTip.delay: 600
                         HoverHandler { id: exportHover }
@@ -879,7 +900,7 @@ ApplicationWindow {
                             clip: true
                             TextArea {
                                 id: inputArea
-                                placeholderText: "输入消息… (Enter 发送，Shift+Enter 换行)"
+                                placeholderText: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.inputPlaceholder) ? localeBridge.t.inputPlaceholder : "Type message… (Enter to send, Shift+Enter for new line)"
                                 placeholderTextColor: cMuted
                                 color: cText; font.pixelSize: 14
                                 wrapMode: TextArea.Wrap
@@ -908,9 +929,9 @@ ApplicationWindow {
                                 spacing: 4
 
                                 readonly property var modes: ["chat", "agent", "planning"]
-                                readonly property var labels: ["对话", "智能体", "规划"]
-                                readonly property var iconNorm: ["qrc:/src/qml/icon_chat.svg", "qrc:/src/qml/icon_agent.svg", "qrc:/src/qml/icon_planning.svg"]
-                                readonly property var iconActive: ["qrc:/src/qml/icon_chat_active.svg", "qrc:/src/qml/icon_agent_active.svg", "qrc:/src/qml/icon_planning_active.svg"]
+                                readonly property var labels: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.modeChat) ? [localeBridge.t.modeChat, localeBridge.t.modeAgent, localeBridge.t.modePlanning] : ["Chat", "Agent", "Planning"]
+                                readonly property var iconNorm: ["qrc:/src/icons/icon_chat.svg", "qrc:/src/icons/icon_agent.svg", "qrc:/src/icons/icon_planning.svg"]
+                                readonly property var iconActive: ["qrc:/src/icons/icon_chat_active.svg", "qrc:/src/icons/icon_agent_active.svg", "qrc:/src/icons/icon_planning_active.svg"]
 
                                 function currentIndex() {
                                     var m = mainView.chatMode
@@ -925,8 +946,8 @@ ApplicationWindow {
 
                                     Rectangle {
                                         id: modeBtn
-                                        width: 72
                                         height: 32
+                                        width: modeBtnRow.implicitWidth + 16
                                         radius: 8
                                         property bool selected: modeButtonRow.currentIndex() === index
                                         property bool hovered: btnHover.hovered
@@ -940,6 +961,7 @@ ApplicationWindow {
                                         border.width: selected ? 0 : 1
 
                                         Row {
+                                            id: modeBtnRow
                                             anchors.centerIn: parent
                                             spacing: 6
 
@@ -977,9 +999,9 @@ ApplicationWindow {
 
                             // 字数提示
                             Text {
-                                text: inputArea.text.length > 0
-                                    ? inputArea.text.length + " 字"
-                                    : ""
+                                text: inputArea.text.length > 0 && localeBridge && localeBridge.t && localeBridge.tVersion >= 0
+                                    ? inputArea.text.length + " " + localeBridge.t.chars
+                                    : (inputArea.text.length > 0 ? inputArea.text.length + " chars" : "")
                                 color: cMuted; font.pixelSize: 11
                                 Layout.fillWidth: true
                             }
@@ -1003,14 +1025,14 @@ ApplicationWindow {
                                         width: 16
                                         height: 16
                                         anchors.verticalCenter: parent.verticalCenter
-                                        source: "qrc:/src/qml/icon_model.svg"
+                                        source: "qrc:/src/icons/icon_model.svg"
                                         fillMode: Image.PreserveAspectFit
                                         smooth: true
                                         mipmap: true
                                     }
                                     Text {
                                         text: (typeof settings !== "undefined" && settings.modelName)
-                                            ? settings.modelName : "模型"
+                                            ? settings.modelName : ((localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.model : "Model")
                                         color: cText
                                         font.pixelSize: 12
                                         font.weight: Font.Normal
@@ -1035,7 +1057,7 @@ ApplicationWindow {
                                         modelSelectPopup.open()
                                     }
                                 }
-                                ToolTip.text: "点击切换模型"
+                                ToolTip.text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.modelSwitchTip : ""
                                 ToolTip.visible: modelBtnHover.hovered
                                 ToolTip.delay: 600
                             }
@@ -1081,11 +1103,11 @@ ApplicationWindow {
                     contentItem: Rectangle {
                         implicitWidth: 6
                         radius: 3
-                        color: parent.pressed ? "#60636A" : (parent.hovered ? "#60636A" : "#484B52")
+                        color: parent.pressed ? cScrollBarHover : (parent.hovered ? cScrollBarHover : cScrollBar)
                     }
                     background: Rectangle {
                         implicitWidth: 6
-                        color: "#2E3035"
+                        color: cDivider
                         radius: 3
                     }
                 }
@@ -1165,18 +1187,18 @@ ApplicationWindow {
     // 文件夹重命名对话框（用于历史树右键）
     Dialog {
         id: folderRenameDialog
-        title: "重命名文件夹"
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.renameFolder : "Rename Folder"
         modal: true
         anchors.centerIn: parent
         width: 320
 
         property string targetId: ""
 
-        background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+        background: Rectangle { color: cPopupBg; radius: 8; border.color: cBorder }
 
         contentItem: Column {
             spacing: 10; padding: 16
-            Text { text: "请输入新名称："; color: cText; font.pixelSize: 13 }
+            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.enterNewName) ? localeBridge.t.enterNewName : "Enter new name:"; color: cText; font.pixelSize: 13 }
             TextField {
                 id: folderRenameField
                 width: 280; height: 36
@@ -1196,7 +1218,7 @@ ApplicationWindow {
         footer: Row {
             spacing: 8; padding: 12; layoutDirection: Qt.RightToLeft
             Button {
-                text: "确定"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.ok : "OK"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cAccent }
@@ -1208,7 +1230,7 @@ ApplicationWindow {
                 }
             }
             Button {
-                text: "取消"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cancel : "Cancel"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: cText; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
@@ -1266,10 +1288,10 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            color: "#25272B"
+            color: cPopupBg
             radius: 10
             border.width: 1
-            border.color: "#3A3D42"
+            border.color: cBorder
         }
 
         contentItem: Column {
@@ -1280,7 +1302,7 @@ ApplicationWindow {
             // 重命名
             ContextMenuItem {
                 icon: "✏️"
-                label: "重命名"
+                label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.rename : "Rename"
                 onTriggered: {
                     if (!historyContextMenu.targetNode) return
                     var n = historyContextMenu.targetNode
@@ -1300,7 +1322,7 @@ ApplicationWindow {
             // 删除
             ContextMenuItem {
                 icon: "🗑"
-                label: "删除"
+                label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.delete : "Delete"
                 accent: true
                 onTriggered: {
                     if (!historyContextMenu.targetNode) return
@@ -1316,7 +1338,7 @@ ApplicationWindow {
             Rectangle {
                 width: parent.width - 12
                 height: 1
-                color: "#3A3D42"
+                color: cBorder
                 visible: historyContextMenu.filteredFolderOptions.length > 0
                 anchors.horizontalCenter: parent.horizontalCenter
             }
@@ -1325,7 +1347,7 @@ ApplicationWindow {
                 model: historyContextMenu.filteredFolderOptions
                 delegate: ContextMenuItem {
                     icon: "📁"
-                    label: "添加到: " + modelData.name
+                    label: (localeBridge && localeBridge.lang) ? localeBridge.tr("addToFolder", modelData.name) : ("Add to: " + modelData.name)
                     property string _folderId: modelData.id || ""
                     onTriggered: {
                         if (historyContextMenu.targetNode)
@@ -1338,7 +1360,7 @@ ApplicationWindow {
             Rectangle {
                 width: parent.width - 12
                 height: 1
-                color: "#3A3D42"
+                color: cBorder
                 visible: historyContextMenu.filteredFolderOptions.length > 0
                 anchors.horizontalCenter: parent.horizontalCenter
             }
@@ -1346,7 +1368,7 @@ ApplicationWindow {
             // 新建文件夹
             ContextMenuItem {
                 icon: "➕"
-                label: "新建文件夹"
+                label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.newFolderInMenu : "New Folder"
                 onTriggered: {
                     if (!historyContextMenu.targetNode) return
                     var n = historyContextMenu.targetNode
@@ -1365,7 +1387,7 @@ ApplicationWindow {
         width: 176
         height: 34
         radius: 6
-        color: ctxHover.hovered ? (ctxItem.accent ? "#4A2226" : "#36383D") : "transparent"
+        color: ctxHover.hovered ? (ctxItem.accent ? "#4A2226" : cHighlight) : "transparent"
 
         property string icon: "📄"
         property string label: ""
@@ -1417,7 +1439,7 @@ ApplicationWindow {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         background: Rectangle {
-            color: "#25272B"
+            color: cPopupBg
             radius: 8
             border.width: 1
             border.color: cBorder

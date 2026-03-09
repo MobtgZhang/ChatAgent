@@ -1,6 +1,8 @@
 #include "settings.h"
+#include "locale_bridge.h"
 
 #include <QFile>
+#include <QUrl>
 #include <QDir>
 #include <QStandardPaths>
 #include <QJsonDocument>
@@ -14,7 +16,6 @@
 Settings::Settings(QObject *parent) : QObject(parent) {
     m_nam = new QNetworkAccessManager(this);
     load();
-    refreshModels();   // ← 新增：启动时自动拉取最新模型列表
 }
 
 
@@ -36,6 +37,43 @@ void Settings::setMaxTokens(int v)              { if (m_maxTokens   != v) { m_ma
 void Settings::setSystemPrompt(const QString &v){ if (m_systemPrompt!= v) { m_systemPrompt= v; emit systemPromptChanged(); } }
 void Settings::setMaxToolRounds(int v)           { int clamped = qBound(5, v, 40); if (m_maxToolRounds != clamped) { m_maxToolRounds = clamped; emit maxToolRoundsChanged(); } }
 void Settings::setShowThinking(bool v)            { if (m_showThinking!= v) { m_showThinking= v; emit showThinkingChanged(); } }
+void Settings::setTheme(const QString &v)         { QString t = (v == QStringLiteral("light")) ? QStringLiteral("light") : QStringLiteral("dark"); if (m_theme != t) { m_theme = t; emit themeChanged(); } }
+void Settings::setLanguage(const QString &v)      { if (m_language != v && !v.isEmpty()) { m_language = v; emit languageChanged(); } }
+void Settings::setCacheDirectory(const QString &v){ if (m_cacheDirectory != v) { m_cacheDirectory = v; emit cacheDirectoryChanged(); } }
+
+QString Settings::urlToLocalPath(const QString &url) const {
+    return QUrl(url).toLocalFile();
+}
+
+QString Settings::defaultCacheDirectory() const {
+    QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    return dir;
+}
+
+void Settings::applyLanguage(const QString &lang) {
+    if (lang.isEmpty()) return;
+    setLanguage(lang);
+    save();
+    if (m_locale)
+        m_locale->reload();
+}
+
+bool Settings::hasConfigFile() const {
+    return QFile::exists(settingsFilePath());
+}
+
+void Settings::setLocaleBridge(LocaleBridge *bridge) {
+    m_locale = bridge;
+    if (m_locale)
+        m_locale->reload();
+}
+
+QString Settings::_tr(const QString &key, const QString &arg) const {
+    if (m_locale)
+        return arg.isEmpty() ? m_locale->tr(key) : m_locale->tr(key, arg);
+    return key;
+}
 
 // ── 模型列表管理 ──────────────────────────────────────────────────────────────
 void Settings::addModel(const QString &model) {
@@ -62,7 +100,7 @@ void Settings::refreshModels() {
     // 标记刷新开始
     if (!m_modelsRefreshing) {
         m_modelsRefreshing = true;
-        m_modelsStatus = tr("正在从 API 刷新模型列表…");
+        m_modelsStatus = _tr("modelsRefreshingStatus");
         emit modelsRefreshingChanged();
         emit modelsStatusChanged();
     }
@@ -70,7 +108,7 @@ void Settings::refreshModels() {
     // 从当前 apiUrl 推导出 /v1/models 地址（兼容 https://api.openai.com 或带 /v1 的端点）
     if (m_apiUrl.trimmed().isEmpty()) {
         qWarning() << "refreshModels error:" << "apiUrl is empty";
-        m_modelsStatus = tr("刷新失败：API 地址为空");
+        m_modelsStatus = _tr("modelsErrorEmpty");
         m_modelsRefreshing = false;
         emit modelsRefreshingChanged();
         emit modelsStatusChanged();
@@ -80,7 +118,7 @@ void Settings::refreshModels() {
     QUrl base(m_apiUrl);
     if (!base.isValid() || base.scheme().isEmpty()) {
         qWarning() << "refreshModels error:" << "invalid apiUrl:" << m_apiUrl;
-        m_modelsStatus = tr("刷新失败：API 地址无效");
+        m_modelsStatus = _tr("modelsErrorInvalid");
         m_modelsRefreshing = false;
         emit modelsRefreshingChanged();
         emit modelsStatusChanged();
@@ -123,7 +161,7 @@ void Settings::refreshModels() {
 
         if (reply->error() != QNetworkReply::NoError) {
             qWarning() << "refreshModels error:" << reply->errorString();
-            m_modelsStatus = tr("刷新失败：") + reply->errorString();
+            m_modelsStatus = _tr("modelsErrorPrefix") + reply->errorString();
             emit modelsRefreshingChanged();
             emit modelsStatusChanged();
             return;
@@ -145,7 +183,7 @@ void Settings::refreshModels() {
 
         if (models.isEmpty()) {
             qWarning() << "refreshModels: no models found in response";
-            m_modelsStatus = tr("刷新失败：返回中没有模型数据");
+            m_modelsStatus = _tr("modelsErrorNoData");
             emit modelsRefreshingChanged();
             emit modelsStatusChanged();
             return;
@@ -159,7 +197,7 @@ void Settings::refreshModels() {
         emit modelListChanged();
         save();
 
-        m_modelsStatus = tr("刷新成功，共加载 %1 个模型").arg(m_modelList.size());
+        m_modelsStatus = _tr("modelsSuccessFormat", QString::number(m_modelList.size()));
         emit modelsRefreshingChanged();
         emit modelsStatusChanged();
     });
@@ -176,25 +214,39 @@ void Settings::save() {
     root["topK"]         = m_topK;
     root["maxTokens"]    = m_maxTokens;
     root["systemPrompt"]  = m_systemPrompt;
-    root["maxToolRounds"] = m_maxToolRounds;
-    root["showThinking"]  = m_showThinking;
+    root["maxToolRounds"]  = m_maxToolRounds;
+    root["showThinking"]   = m_showThinking;
+    root["theme"]          = m_theme;
+    root["language"]       = m_language;
+    root["cacheDirectory"] = m_cacheDirectory;
 
     QJsonArray models;
     for (const QString &m : m_modelList) models.append(m);
     root["modelList"] = models;
 
+    bool existed = QFile::exists(settingsFilePath());
     QFile f(settingsFilePath());
-    if (f.open(QIODevice::WriteOnly))
+    if (f.open(QIODevice::WriteOnly)) {
         f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+        if (!existed)
+            emit hasConfigFileChanged();
+    }
 }
 
 // ── 持久化：加载 ──────────────────────────────────────────────────────────────
 void Settings::load() {
     QFile f(settingsFilePath());
-    if (!f.open(QIODevice::ReadOnly)) return;
+    if (!f.open(QIODevice::ReadOnly)) {
+        // 无配置文件时保持默认英语
+        m_language = QStringLiteral("en");
+        return;
+    }
 
     QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     if (root.isEmpty()) return;
+
+    // 默认语言为英语，仅在配置中有有效 language 时覆盖
+    m_language = QStringLiteral("en");
 
     if (root.contains("apiKey"))       m_apiKey       = root["apiKey"].toString();
     if (root.contains("apiUrl"))       m_apiUrl       = root["apiUrl"].toString();
@@ -204,8 +256,17 @@ void Settings::load() {
     if (root.contains("topK"))         m_topK         = root["topK"].toInt(50);
     if (root.contains("maxTokens"))    m_maxTokens    = root["maxTokens"].toInt(4096);
     if (root.contains("systemPrompt"))  m_systemPrompt  = root["systemPrompt"].toString();
-    if (root.contains("maxToolRounds")) m_maxToolRounds = qBound(5, root["maxToolRounds"].toInt(40), 40);
-    if (root.contains("showThinking"))  m_showThinking  = root["showThinking"].toBool(false);
+    if (root.contains("maxToolRounds"))  m_maxToolRounds = qBound(5, root["maxToolRounds"].toInt(40), 40);
+    if (root.contains("showThinking"))   m_showThinking  = root["showThinking"].toBool(false);
+    if (root.contains("theme")) {
+        QString t = root["theme"].toString();
+        m_theme = (t == QStringLiteral("light")) ? t : QStringLiteral("dark");
+    }
+    if (root.contains("language")) {
+        QString lang = root["language"].toString().trimmed();
+        m_language = lang.isEmpty() ? QStringLiteral("en") : lang;
+    }
+    if (root.contains("cacheDirectory")) m_cacheDirectory = root["cacheDirectory"].toString();
 
     if (root.contains("modelList")) {
         m_modelList.clear();

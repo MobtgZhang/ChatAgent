@@ -2,6 +2,8 @@
 #define HISTORY_H
 
 #include <QObject>
+
+class Settings;
 #include <QVariantList>
 #include <QString>
 #include <QList>
@@ -31,6 +33,7 @@ class History : public QObject {
 
 public:
     explicit History(QObject *parent = nullptr);
+    explicit History(Settings *settings, QObject *parent = nullptr);
 
     QAbstractListModel* flatModel() const { return m_flatModel; }
 
@@ -58,10 +61,12 @@ signals:
     void flatNodesChanged();
 
 private:
+    Settings           *m_settings = nullptr;
     QList<HistoryNode>  m_nodes;
     QVariantList        m_flatNodes;
     HistoryListModel   *m_flatModel;
 
+    QString baseDir()     const;  // 缓存目录根（用户设置或默认 AppDataLocation）
     QString dataDir()     const;
     QString indexPath()   const;
 

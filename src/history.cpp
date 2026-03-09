@@ -1,5 +1,6 @@
 #include "history.h"
 #include "historylistmodel.h"
+#include "settings.h"
 
 #include <QDir>
 #include <QFile>
@@ -18,15 +19,29 @@ History::History(QObject *parent) : QObject(parent), m_flatModel(new HistoryList
     rebuildFlat();
 }
 
-// ── 路径 ──────────────────────────────────────────────────────────────────────
+History::History(Settings *settings, QObject *parent)
+    : QObject(parent), m_settings(settings), m_flatModel(new HistoryListModel(this)) {
+    QDir().mkpath(dataDir());
+    loadIndex();
+    rebuildFlat();
+}
+
+// ── 路径（使用用户设置的缓存目录存储历史记录和配置）────────────────────────────
+QString History::baseDir() const {
+    if (m_settings) {
+        QString cacheDir = m_settings->cacheDirectory().trimmed();
+        if (!cacheDir.isEmpty())
+            return cacheDir;
+    }
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+}
+
 QString History::dataDir() const {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-           + "/sessions";
+    return baseDir() + "/sessions";
 }
 
 QString History::indexPath() const {
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
-           + "/history_index.json";
+    return baseDir() + "/history_index.json";
 }
 
 QString History::sessionFilePath(const QString &id) const {

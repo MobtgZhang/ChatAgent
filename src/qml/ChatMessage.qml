@@ -10,6 +10,23 @@ Item {
     height: bubbleColumn.implicitHeight + 28
     property string role:           "user"
     property string msgContent:      ""
+
+    // 主题色（Dark 黑底白字 / Light 白底黑字）
+    readonly property bool isLight:  (typeof settings !== "undefined" && settings.theme === "light")
+    readonly property color cTextAi:    isLight ? "#0D0D0F" : "#F2F2F4"
+    readonly property color cTextUser:   "white"
+    readonly property color cMuted:     isLight ? "#5C5E66" : "#8E9099"
+    readonly property color cBubbleAi:   isLight ? "#E8E8EC" : "#404249"
+    readonly property color cBubbleUser: "#5865F2"
+    readonly property color cThinkBg:    isLight ? "#F5F5F7" : "#1A1B1E"
+    readonly property color cThinkBorder: isLight ? "#D8D8DC" : "#2E3035"
+    readonly property color cEditBg:     isLight ? "#FFFFFF" : "#2E3035"
+    readonly property color cEditText:   isLight ? "#0D0D0F" : "#F2F2F4"
+    readonly property color cActionHover: isLight ? "#B0B2B8" : "#5C5F66"
+    readonly property color cActionText: isLight ? "#4A4C54" : "#B5BAC1"
+    readonly property color cBtnCancel:   isLight ? "#E8E8EC" : "#3F4147"
+    readonly property color cMenuBg:     isLight ? "#FAFAFA" : "#0D0D0F"
+    readonly property color cMenuBorder: isLight ? "#D8D8DC" : "#2D2D32"
     property string thinkingContent:""
     property bool   isThinking:     false
     property int    messageIndex:   -1
@@ -105,11 +122,14 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     Text { text: "🧠"; font.pixelSize: 12 }
                     Text {
-                        text: isThinking
-                            ? "思考中... " + thinkTime.toFixed(1) + "s"
-                            : "思考完成 (" + thinkTime.toFixed(1) + "s)" +
-                            (settings.showThinking && thinkingContent !== "" ? (thinkExpanded ? "  ▲" : "  ▼") : "")
-                        color: "#949BA4"
+                        text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0)
+                            ? (isThinking
+                                ? (localeBridge.t.thinkingInProgress || "Thinking... ") + thinkTime.toFixed(1) + (localeBridge.t.thinkingSeconds || "s")
+                                : (localeBridge.t.thinkingDone || "Done (") + thinkTime.toFixed(1) + (localeBridge.t.thinkingSeconds || "s)") +
+                                (settings.showThinking && thinkingContent !== "" ? (thinkExpanded ? "  ▲" : "  ▼") : ""))
+                            : (isThinking ? "Thinking... " + thinkTime.toFixed(1) + "s" : "Done (" + thinkTime.toFixed(1) + "s)" +
+                            (settings.showThinking && thinkingContent !== "" ? (thinkExpanded ? "  ▲" : "  ▼") : ""))
+                        color: root.cMuted
                         font.pixelSize: 11
                         font.italic: true
                     }
@@ -132,9 +152,9 @@ Item {
                     width: parent.width
                     visible: thinkExpanded && thinkingContent !== ""
                     height: visible && thinkLoader.item ? (thinkLoader.item.implicitHeight || thinkLoader.item.height) + 10 : 0
-                    color: "#1A1B1E"
+                    color: root.cThinkBg
                     radius: 8
-                    border.color: "#2E3035"
+                    border.color: root.cThinkBorder
 
                     Loader {
                         id: thinkLoader
@@ -142,7 +162,7 @@ Item {
                         sourceComponent: (root.hasMath(root.thinkingContent) || root.hasCodeBlocks(root.thinkingContent)) ? mathRenderComp : mdRenderComp
                         onLoaded: {
                             item.markdownText = root.thinkingContent
-                            item.textColor = "#C9CDD4"
+                            item.textColor = root.cMuted
                             item.fontSize = 12
                         }
                     }
@@ -154,7 +174,7 @@ Item {
                 width: parent.width
                 visible: settings.showThinking && isAI && root.msgContent === "" && root.isThinking
                 text: "▍"
-                color: "#949BA4"
+                color: root.cMuted
                 font.pixelSize: 14
             }
 
@@ -163,7 +183,7 @@ Item {
                 id: bubble
                 width: parent.width
                 implicitHeight: contentCol.implicitHeight + 16
-                color: isAI ? "#404249" : "#5865F2"
+                color: isAI ? root.cBubbleAi : root.cBubbleUser
                 radius: 12
 
                 Column {
@@ -183,7 +203,7 @@ Item {
                         sourceComponent: (root.hasMath(root.msgContent) || root.hasCodeBlocks(root.msgContent)) ? mathRenderComp : mdRenderComp
                         onLoaded: {
                             item.markdownText = root.msgContent
-                            item.textColor = isAI ? "#DBDEE1" : "white"
+                            item.textColor = isAI ? root.cTextAi : root.cTextUser
                         }
                     }
 
@@ -198,11 +218,11 @@ Item {
                             width: parent.width
                             height: Math.max(60, implicitHeight)
                             text: root.msgContent
-                            color: "#DBDEE1"
+                            color: root.cEditText
                             font.pixelSize: 14
                             wrapMode: TextArea.Wrap
                             background: Rectangle {
-                                color: "#2E3035"
+                                color: root.cEditBg
                                 radius: 6
                                 border.color: "#5865F2"
                                 border.width: 1
@@ -234,12 +254,12 @@ Item {
                         width: 22
                         height: 22
                         radius: 4
-                        color: prevHover.hovered ? "#5C5F66" : "transparent"
+                        color: prevHover.hovered ? root.cActionHover : "transparent"
                         opacity: currentVersion > 1 ? 1 : 0.4
                         Text {
                             anchors.centerIn: parent
                             text: "◀"
-                            color: "#B5BAC1"
+                            color: root.cActionText
                             font.pixelSize: 10
                         }
                         HoverHandler { id: prevHover }
@@ -264,12 +284,12 @@ Item {
                         width: 22
                         height: 22
                         radius: 4
-                        color: nextHover.hovered ? "#5C5F66" : "transparent"
+                        color: nextHover.hovered ? root.cActionHover : "transparent"
                         opacity: currentVersion < totalVersions ? 1 : 0.4
                         Text {
                             anchors.centerIn: parent
                             text: "▶"
-                            color: "#B5BAC1"
+                            color: root.cActionText
                             font.pixelSize: 10
                         }
                         HoverHandler { id: nextHover }
@@ -294,11 +314,11 @@ Item {
                         width: 44
                         height: 24
                         radius: 4
-                        color: cancelHover.hovered ? "#5C5F66" : "#3F4147"
+                        color: cancelHover.hovered ? root.cActionHover : root.cBtnCancel
                         Text {
                             anchors.centerIn: parent
-                            text: qsTr("取消")
-                            color: "#B5BAC1"
+                            text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cancel : "Cancel"
+                            color: root.cActionText
                             font.pixelSize: 12
                         }
                         HoverHandler { id: cancelHover }
@@ -316,7 +336,7 @@ Item {
                         color: saveHover.hovered ? "#6B7AF2" : "#5865F2"
                         Text {
                             anchors.centerIn: parent
-                            text: qsTr("保存")
+                            text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.save : "Save"
                             color: "white"
                             font.pixelSize: 12
                         }
@@ -339,14 +359,14 @@ Item {
                     width: 24
                     height: 24
                     radius: 4
-                    color: editHover.hovered ? "#5C5F66" : "transparent"
+                    color: editHover.hovered ? root.cActionHover : "transparent"
                     // 仅用户消息支持“修改”
                     visible: !root.editing && !root.isAI
                     Image {
                         anchors.centerIn: parent
-                        source: "qrc:/src/qml/pencil.svg"
+                        source: root.isLight ? "qrc:/src/icons/pencil_light.svg" : "qrc:/src/icons/pencil.svg"
                         sourceSize: Qt.size(14, 14)
-                        opacity: 0.85
+                        opacity: 0.9
                     }
                     HoverHandler { id: editHover }
                     MouseArea {
@@ -365,13 +385,13 @@ Item {
                     width: 24
                     height: 24
                     radius: 4
-                    color: regenHover.hovered ? "#5C5F66" : "transparent"
+                    color: regenHover.hovered ? root.cActionHover : "transparent"
                     visible: !root.editing && !root.isAI
                     Image {
                         anchors.centerIn: parent
-                        source: "qrc:/src/qml/regenerate.svg"
+                        source: root.isLight ? "qrc:/src/icons/regenerate_light.svg" : "qrc:/src/icons/regenerate.svg"
                         sourceSize: Qt.size(14, 14)
-                        opacity: 0.85
+                        opacity: 0.9
                     }
                     HoverHandler { id: regenHover }
                     MouseArea {
@@ -389,13 +409,13 @@ Item {
                     width: 24
                     height: 24
                     radius: 4
-                    color: copyHover.hovered ? "#5C5F66" : "transparent"
+                    color: copyHover.hovered ? root.cActionHover : "transparent"
                     visible: !root.editing
                     Image {
                         anchors.centerIn: parent
-                        source: "qrc:/src/qml/copy.svg"
+                        source: root.isLight ? "qrc:/src/icons/copy_light.svg" : "qrc:/src/icons/copy.svg"
                         sourceSize: Qt.size(14, 14)
-                        opacity: 0.85
+                        opacity: 0.9
                     }
                     HoverHandler { id: copyHover }
                     MouseArea {
@@ -437,19 +457,39 @@ Item {
         id: moreMenu
         width: 140
         background: Rectangle {
-            color: "#2B2D31"
-            border.color: "#3F4147"
+            color: root.cMenuBg
+            border.color: root.cMenuBorder
             radius: 6
         }
 
         MenuItem {
-            text: "删除消息"
+            text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.deleteMessage : "Delete message"
             visible: !root.isAI
+            implicitWidth: 140
+            contentItem: Text {
+                text: parent.text
+                color: root.cTextAi
+                font.pixelSize: 13
+                leftPadding: 12
+                verticalAlignment: Text.AlignVCenter
+            }
+            background: Rectangle { color: parent.highlighted ? root.cActionHover : "transparent"; radius: 4 }
+            indicator: Item { width: 0 }
             onTriggered: mainView.deleteMessage(root.messageIndex)
         }
         MenuItem {
-            text: "重新生成"
+            text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.regenerate : "Regenerate"
             visible: root.isAI
+            implicitWidth: 140
+            contentItem: Text {
+                text: parent.text
+                color: root.cTextAi
+                font.pixelSize: 13
+                leftPadding: 12
+                verticalAlignment: Text.AlignVCenter
+            }
+            background: Rectangle { color: parent.highlighted ? root.cActionHover : "transparent"; radius: 4 }
+            indicator: Item { width: 0 }
             onTriggered: mainView.resendFrom(root.messageIndex)
         }
     }
@@ -457,7 +497,16 @@ Item {
     onMsgContentChanged: {
         if (contentLoader.item) {
             contentLoader.item.markdownText = root.msgContent
-            contentLoader.item.textColor = isAI ? "#DBDEE1" : "white"
+            contentLoader.item.textColor = isAI ? root.cTextAi : root.cTextUser
+        }
+    }
+    Connections {
+        target: typeof settings !== "undefined" ? settings : null
+        function onThemeChanged() {
+            if (contentLoader.item)
+                contentLoader.item.textColor = root.isAI ? root.cTextAi : root.cTextUser
+            if (thinkLoader.item)
+                thinkLoader.item.textColor = root.cMuted
         }
     }
     onThinkingContentChanged: {

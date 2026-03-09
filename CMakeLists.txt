@@ -15,6 +15,7 @@ find_package(Qt6 REQUIRED COMPONENTS
 qt_add_executable(appAIChat
     src/main.cpp
     src/about.h   src/about.cpp
+    src/locale_bridge.h src/locale_bridge.cpp
     src/settings.h src/settings.cpp
     src/history.h  src/history.cpp
     src/historylistmodel.h src/historylistmodel.cpp
@@ -49,18 +50,25 @@ qt_add_resources(appAIChat "qml_res"
         src/qml/MarkdownRender.qml
         src/qml/MarkdownMathRender.qml
         src/qml/md_render.html
-        src/qml/copy.svg
-        src/qml/pencil.svg
-        src/qml/regenerate.svg
-        src/qml/icon_chat.svg
-        src/qml/icon_agent.svg
-        src/qml/icon_planning.svg
-        src/qml/icon_chat_active.svg
-        src/qml/icon_agent_active.svg
-        src/qml/icon_planning_active.svg
-        src/qml/icon_model.svg
+        src/icons/copy.svg
+        src/icons/copy_light.svg
+        src/icons/pencil.svg
+        src/icons/pencil_light.svg
+        src/icons/regenerate.svg
+        src/icons/regenerate_light.svg
+        src/icons/icon_chat.svg
+        src/icons/icon_agent.svg
+        src/icons/icon_planning.svg
+        src/icons/icon_chat_active.svg
+        src/icons/icon_agent_active.svg
+        src/icons/icon_planning_active.svg
+        src/icons/icon_model.svg
         src/qml/Settings.qml
         src/qml/About.qml
+        src/translations/zh.json
+        src/translations/en.json
+        src/translations/ru.json
+        src/translations/fr.json
 )
 
 # ── 链接 ─────────────────────────────────────────────────────────────────────
