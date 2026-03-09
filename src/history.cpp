@@ -119,6 +119,7 @@ void History::appendChildren(const QString &parentId, int depth,
         item["expanded"]    = n.expanded;
         item["hasChildren"] = hasChildren;
         item["updatedAt"]   = n.updatedAt;
+        item["parentId"]    = n.parentId;
         out.append(item);
 
         // 只有展开的文件夹才继续递归子节点
@@ -207,6 +208,17 @@ void History::moveNode(const QString &id, const QString &newParentId) {
     if (idx < 0) return;
     // 防止移动到自身或后代
     if (id == newParentId) return;
+
+    // 检查 newParentId 是否是 id 的后代（向上追溯父链）
+    QString curParent = newParentId;
+    while (!curParent.isEmpty()) {
+        if (curParent == id)
+            return;
+        const int pIdx = findIndex(curParent);
+        if (pIdx < 0)
+            break;
+        curParent = m_nodes[pIdx].parentId;
+    }
     m_nodes[idx].parentId  = newParentId;
     m_nodes[idx].updatedAt = QDateTime::currentMSecsSinceEpoch();
     saveIndex();

@@ -8,7 +8,7 @@ set(CMAKE_AUTORCC ON)
 
 # ── 依赖查找 ────────────────────────────────────────────────────────────────
 find_package(Qt6 REQUIRED COMPONENTS
-    Core Gui Quick QuickControls2 WebEngineQuick Network
+    Core Gui Quick QuickControls2 Network
 )
 
 # ── 可执行文件 ──────────────────────────────────────────────────────────────
@@ -17,6 +17,7 @@ qt_add_executable(appAIChat
     src/about.h   src/about.cpp
     src/settings.h src/settings.cpp
     src/history.h  src/history.cpp
+    src/messagemodel.h src/messagemodel.cpp
     src/mainview.h src/mainview.cpp
 )
 
@@ -39,7 +40,6 @@ target_link_libraries(appAIChat PRIVATE
     Qt6::Gui
     Qt6::Quick
     Qt6::QuickControls2
-    Qt6::WebEngineQuick
     Qt6::Network
 )
 

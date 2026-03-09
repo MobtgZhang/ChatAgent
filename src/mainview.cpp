@@ -34,8 +34,7 @@ void MainView::setIsStreaming(bool v) {
 }
 
 void MainView::appendMessage(const QVariantMap &msg) {
-    m_messages.append(msg);
-    emit messagesChanged();
+    m_messagesModel.appendOne(msg);
 }
 
 // ── 会话管理 ──────────────────────────────────────────────────────────────────
@@ -49,7 +48,7 @@ void MainView::newSession(const QString &name) {
 
     m_currentSession = id;
     m_sessionName    = sessionName;
-    m_messages.clear();
+    m_messagesModel.clearAll();
 
     // 添加 system 欢迎消息
     QVariantMap welcome;
@@ -59,9 +58,7 @@ void MainView::newSession(const QString &name) {
     welcome["thinking"]  = "";
     welcome["isThinking"]= false;
     welcome["id"]        = "welcome";
-    m_messages.append(welcome);
-
-    emit messagesChanged();
+    m_messagesModel.appendOne(welcome);
     emit currentSessionChanged();
     emit sessionNameChanged();
     saveCurrentSession();
@@ -72,12 +69,11 @@ void MainView::loadSession(const QString &id) {
     loadSessionFile(id);
     m_currentSession = id;
     emit currentSessionChanged();
-    emit messagesChanged();
 }
 
 void MainView::clearMessages() {
     if (m_activeReply) m_activeReply->abort();
-    m_messages.clear();
+    m_messagesModel.clearAll();
 
     QVariantMap welcome;
     welcome["role"]      = "ai";
@@ -85,9 +81,7 @@ void MainView::clearMessages() {
     welcome["thinking"]  = "";
     welcome["isThinking"]= false;
     welcome["id"]        = "welcome";
-    m_messages.append(welcome);
-
-    emit messagesChanged();
+    m_messagesModel.appendOne(welcome);
     saveCurrentSession();
 }
 
@@ -100,33 +94,36 @@ void MainView::renameSession(const QString &name) {
 
 // ── 消息编辑 ──────────────────────────────────────────────────────────────────
 void MainView::editMessage(int index, const QString &content) {
-    if (index < 0 || index >= m_messages.size()) return;
-    QVariantMap msg = m_messages[index].toMap();
+    if (index < 0 || index >= m_messagesModel.size()) return;
+    QVariantMap msg = m_messagesModel.at(index);
     msg["content"] = content.trimmed();
-    m_messages.replace(index, msg);
-    emit messagesChanged();
+    m_messagesModel.replaceAtRow(index, msg);
     saveCurrentSession();
 }
 
 void MainView::deleteMessage(int index) {
-    if (index < 0 || index >= m_messages.size()) return;
-    m_messages.removeAt(index);
-    emit messagesChanged();
+    // 只允许删除用户消息；并且删除该条及其之后的所有消息
+    if (index < 0 || index >= m_messagesModel.size()) return;
+
+    const QVariantMap msg = m_messagesModel.at(index);
+    if (msg.value("role").toString() != QLatin1String("user"))
+        return;
+
+    // 截断到 index（不含 index 本身），等价于删除当前及其之后的所有消息
+    m_messagesModel.truncateTo(index);
     saveCurrentSession();
 }
 
 void MainView::resendFrom(int index) {
     // 截断到 index（不含），然后重新发送
-    if (index < 0 || index >= m_messages.size()) return;
-    while (m_messages.size() > index)
-        m_messages.removeLast();
-    emit messagesChanged();
+    if (index < 0 || index >= m_messagesModel.size()) return;
+    m_messagesModel.truncateTo(index);
 
     // 找最后一条 user 消息重发
-    for (int i = m_messages.size() - 1; i >= 0; --i) {
-        QVariantMap msg = m_messages[i].toMap();
+    for (int i = m_messagesModel.size() - 1; i >= 0; --i) {
+        QVariantMap msg = m_messagesModel.at(i);
         if (msg["role"].toString() == "user") {
-            startApiCall(m_messages);
+            startApiCall(m_messagesModel.toVariantList());
             return;
         }
     }
@@ -143,10 +140,9 @@ void MainView::sendMessage(const QString &text) {
     userMsg["thinking"]  = "";
     userMsg["isThinking"]= false;
     userMsg["id"]        = QString::number(QDateTime::currentMSecsSinceEpoch());
-    m_messages.append(userMsg);
-    emit messagesChanged();
+    m_messagesModel.appendOne(userMsg);
 
-    startApiCall(m_messages);
+    startApiCall(m_messagesModel.toVariantList());
 }
 
 // ── 停止生成 ──────────────────────────────────────────────────────────────────
@@ -158,12 +154,12 @@ void MainView::stopGeneration() {
     setIsStreaming(false);
 
     // 标记最后 AI 消息已完成
-    if (!m_messages.isEmpty()) {
-        QVariantMap last = m_messages.last().toMap();
+    if (!m_messagesModel.isEmpty()) {
+        const int lastRow = m_messagesModel.size() - 1;
+        QVariantMap last = m_messagesModel.at(lastRow);
         if (last["role"].toString() == "ai" && last["isThinking"].toBool()) {
             last["isThinking"] = false;
-            m_messages.replace(m_messages.size() - 1, last);
-            emit messagesChanged();
+            m_messagesModel.replaceAtRow(lastRow, last);
         }
     }
     saveCurrentSession();
@@ -178,8 +174,7 @@ void MainView::startApiCall(const QVariantList & /*history*/) {
     aiMsg["thinking"]  = "";
     aiMsg["isThinking"]= true;
     aiMsg["id"]        = QString::number(QDateTime::currentMSecsSinceEpoch());
-    m_messages.append(aiMsg);
-    emit messagesChanged();
+    m_messagesModel.appendOne(aiMsg);
     setIsStreaming(true);
 
     // 构造请求
@@ -221,7 +216,8 @@ void MainView::startApiCall(const QVariantList & /*history*/) {
     if (!m_settings->systemPrompt().trimmed().isEmpty())
         msgs.append(QJsonObject{{"role","system"},{"content",m_settings->systemPrompt()}});
 
-    for (const QVariant &v : m_messages) {
+    const QVariantList snapshot = m_messagesModel.toVariantList();
+    for (const QVariant &v : snapshot) {
         QVariantMap m = v.toMap();
         QString role = m["role"].toString();
         if (role == "ai") role = "assistant";
@@ -259,7 +255,7 @@ void MainView::startApiCall(const QVariantList & /*history*/) {
 
             bool isThinking = content.isEmpty()
                 && (!reasoning.isEmpty()
-                    || m_messages.last().toMap()["content"].toString().isEmpty());
+                    || m_messagesModel.at(m_messagesModel.size() - 1).value("content").toString().isEmpty());
 
             updateLastAiMessage(reasoning, content, isThinking);
         }
@@ -284,24 +280,7 @@ void MainView::startApiCall(const QVariantList & /*history*/) {
 void MainView::updateLastAiMessage(const QString &reasoningChunk,
                                    const QString &contentChunk,
                                    bool isThinking) {
-    if (m_messages.isEmpty()) return;
-
-    QVariantMap last = m_messages.last().toMap();
-    if (last["role"].toString() != "ai") return;
-
-    if (!reasoningChunk.isEmpty())
-        last["thinking"] = last["thinking"].toString() + reasoningChunk;
-    if (!contentChunk.isEmpty())
-        last["content"]  = last["content"].toString()  + contentChunk;
-
-    if (!contentChunk.isEmpty()
-        || (!isThinking && reasoningChunk.isEmpty() && contentChunk.isEmpty()))
-        last["isThinking"] = false;
-    else
-        last["isThinking"] = isThinking;
-
-    m_messages.replace(m_messages.size() - 1, last);
-    emit messagesChanged();
+    m_messagesModel.updateLastAiMessageAppend(reasoningChunk, contentChunk, isThinking);
 }
 
 // ── 持久化 ────────────────────────────────────────────────────────────────────
@@ -309,8 +288,9 @@ void MainView::saveCurrentSession() {
     if (m_currentSession.isEmpty()) return;
 
     QJsonArray arr;
-    for (const QVariant &v : m_messages) {
-        QVariantMap m = v.toMap();
+    const QVariantList list = m_messagesModel.toVariantList();
+    for (const QVariant &v : list) {
+        const QVariantMap m = v.toMap();
         QJsonObject o;
         o["role"]       = m["role"].toString();
         o["content"]    = m["content"].toString();
@@ -333,7 +313,7 @@ void MainView::saveCurrentSession() {
 void MainView::loadSessionFile(const QString &id) {
     QFile f(m_history->sessionFilePath(id));
     if (!f.open(QIODevice::ReadOnly)) {
-        m_messages.clear();
+        m_messagesModel.clearAll();
         m_sessionName = "新对话";
         emit sessionNameChanged();
         return;
@@ -343,21 +323,25 @@ void MainView::loadSessionFile(const QString &id) {
     m_sessionName = root["name"].toString("新对话");
     emit sessionNameChanged();
 
-    m_messages.clear();
+    m_messagesModel.clearAll();
     for (const QJsonValue &v : root["messages"].toArray()) {
         QJsonObject o = v.toObject();
         QVariantMap msg;
-        msg["role"]       = o["role"].toString();
+        // 兼容旧数据：将 OpenAI 风格的 assistant 角色归一化为 ai
+        {
+            const QString role = o["role"].toString();
+            msg["role"] = (role == QLatin1String("assistant")) ? QStringLiteral("ai") : role;
+        }
         msg["content"]    = o["content"].toString();
         msg["thinking"]   = o["thinking"].toString();
         msg["isThinking"] = false;
         msg["id"]         = o["id"].toString();
-        m_messages.append(msg);
+        m_messagesModel.appendOne(msg);
     }
 }
 
 QVariantList MainView::buildApiMessages() const {
-    return m_messages;
+    return m_messagesModel.toVariantList();
 }
 
 // ── 根据对话内容自动命名会话 ─────────────────────────────────────────────────────
@@ -374,8 +358,9 @@ void MainView::autoNameCurrentSession() {
 
     // 找第一条用户消息作为标题
     QString title;
-    for (const QVariant &v : m_messages) {
-        QVariantMap m = v.toMap();
+    const QVariantList list = m_messagesModel.toVariantList();
+    for (const QVariant &v : list) {
+        const QVariantMap m = v.toMap();
         if (m.value("role").toString() == QLatin1String("user")) {
             title = m.value("content").toString().trimmed();
             if (!title.isEmpty())

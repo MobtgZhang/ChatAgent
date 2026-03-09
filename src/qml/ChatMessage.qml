@@ -13,11 +13,19 @@ Item {
     property bool   isThinking:     false
     property int    messageIndex:   -1
 
-    property bool isAI: role === "ai"
+    // 兼容：历史数据/接口可能用 assistant 表示 AI
+    property bool isAI: role === "ai" || role === "assistant"
 
     // ── 内部状态 ─────────────────────────────────────────────────────────────
     property bool editing:        false
     property bool thinkExpanded:  false
+
+    // 当进入思考阶段时自动展开思考内容
+    onIsThinkingChanged: {
+        if (isThinking && settings.showThinking && isAI) {
+            thinkExpanded = true
+        }
+    }
 
     property real thinkTime: 0.0
     Timer {
@@ -59,30 +67,31 @@ Item {
             spacing: 6
 
             // 发送者 + 操作按钮行
-            Row {
+            Item {
                 width: parent.width
-                spacing: 8
+                height: 22
 
                 Text {
                     text: isAI ? "ChatAgent AI" : "You"
                     color: "#949BA4"; font.pixelSize: 12; font.bold: true
                     //anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
                 }
 
-                // 操作按钮（hover 显示）
+                // 操作按钮（始终显示：更直观，也避免 hover 在部分平台不触发）
                 Row {
                     spacing: 4
                     //anchors.verticalCenter: parent.verticalCenter
-                    visible: msgHover.hovered
+                    visible: true
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
 
                     // 编辑按钮
                     ToolButton {
-                        width: 22; height: 22
-                        text: "✏️"
+                        width: 48; height: 22
+                        text: "编辑"
                         font.pixelSize: 11
-                        ToolTip.text: "编辑"
-                        ToolTip.visible: hovered
-                        ToolTip.delay: 500
                         onClicked: {
                             root.editing = !root.editing
                             if (root.editing) editArea.text = root.msgContent
@@ -90,23 +99,18 @@ Item {
                     }
                     // 删除按钮
                     ToolButton {
-                        width: 22; height: 22
-                        text: "🗑️"
+                        width: 48; height: 22
+                        text: "删除"
                         font.pixelSize: 11
-                        ToolTip.text: "删除"
-                        ToolTip.visible: hovered
-                        ToolTip.delay: 500
+                        visible: !isAI    // 只允许删除用户消息
                         onClicked: mainView.deleteMessage(root.messageIndex)
                     }
                     // 重新生成（仅 AI 消息）
                     ToolButton {
-                        width: 22; height: 22
-                        text: "🔄"
+                        width: 68; height: 22
+                        text: "重新生成"
                         font.pixelSize: 11
                         visible: isAI
-                        ToolTip.text: "重新生成"
-                        ToolTip.visible: hovered
-                        ToolTip.delay: 500
                         onClicked: mainView.resendFrom(root.messageIndex)
                     }
                 }
@@ -116,7 +120,8 @@ Item {
             Column {
                 width: parent.width
                 spacing: 4
-                visible: isAI && (thinkingContent !== "" || isThinking)
+                // 开启「显示思考」并且为 AI 消息时，总是显示思考状态行
+                visible: settings.showThinking && isAI
 
                 // 标题行（可点击折叠）
                 Item {
@@ -145,17 +150,23 @@ Item {
                 Rectangle {
                     width: parent.width
                     visible: thinkExpanded && thinkingContent !== ""
-                    height: visible ? thinkText.implicitHeight + 10 : 0
+                    height: visible ? thinkMd.implicitHeight + 10 : 0
                     color: "#1A1B1E"
                     radius: 5
                     border.color: "#2E3035"
 
-                    Text {
-                        id: thinkText
-                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
-                        text: root.thinkingContent
-                        color: "#72767D"; font.pixelSize: 13
-                        wrapMode: Text.Wrap; lineHeight: 1.4
+                    // 使用 MarkdownRender 渲染思考过程，支持 Markdown 语法
+                    MarkdownRender {
+                        id: thinkMd
+                        anchors {
+                            left: parent.left
+                            right: parent.right
+                            top: parent.top
+                            margins: 8
+                        }
+                        markdownText: root.thinkingContent
+                        textColor: "#C9CDD4"
+                        fontSize: 13
                     }
                 }
             }
@@ -163,7 +174,7 @@ Item {
             // ── 思考占位（纯 QML，不触发 WebView）───────────────────────────
             Text {
                 width: parent.width
-                visible: isAI && root.msgContent === "" && root.isThinking
+                visible: settings.showThinking && isAI && root.msgContent === "" && root.isThinking
                 text: "▍"
                 color: "#949BA4"; font.pixelSize: 14
             }

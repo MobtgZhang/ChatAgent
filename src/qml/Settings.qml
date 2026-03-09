@@ -88,6 +88,7 @@ Window {
 
             // ── Tab 0: API 配置 ───────────────────────────────────────────────
             ScrollView {
+                id: paramsScrollView
                 anchors.fill: parent
                 clip: true
                 // 关键：固定内容宽度，避免水平滚动条出现及布局溢出
@@ -166,44 +167,11 @@ Window {
                             Layout.fillWidth: true
                             spacing: 8
 
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-
-                                FieldInput {
-                                    id: newModelField
-                                    Layout.fillWidth: true
-                                    placeholderText: "输入自定义模型名…"
-                                }
-                                Button {
-                                    text: "添加"; height: 34
-                                    contentItem: Text {
-                                        text: parent.text; color: "white"; font.pixelSize: 13
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    background: Rectangle { radius: 5; color: cAccent }
-                                    onClicked: {
-                                        settings.addModel(newModelField.text)
-                                        newModelField.text = ""
-                                    }
-                                }
-                                Button {
-                                    text: "删除当前"; height: 34
-                                    contentItem: Text {
-                                        text: parent.text; color: "#FF7B72"; font.pixelSize: 13
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                    }
-                                    background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
-                                    onClicked: settings.removeModel(settings.modelName)
-                                }
-                            }
-
                             Button {
                                 Layout.alignment: Qt.AlignLeft
                                 text: "从 API 刷新模型列表"
                                 height: 30
+                                enabled: !settings.modelsRefreshing
                                 contentItem: Text {
                                     text: parent.text; color: cMuted; font.pixelSize: 12
                                     horizontalAlignment: Text.AlignHCenter
@@ -211,6 +179,14 @@ Window {
                                 }
                                 background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
                                 onClicked: settings.refreshModels()
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: settings.modelsStatus
+                                color: cMuted
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                                visible: settings.modelsStatus !== ""
                             }
                         }
                     }
@@ -221,6 +197,7 @@ Window {
 
             // ── Tab 1: 参数调节 ───────────────────────────────────────────────
             ScrollView {
+            id: paramsTuningScroll
                 anchors.fill: parent
                 clip: true
                 // 关键：固定内容宽度，防止溢出；禁用水平滚动
@@ -239,6 +216,7 @@ Window {
                         hint:  "控制随机性，越大越有创意 (0.0 – 2.0)"
                         value: settings.temperature
                         from: 0.0; to: 2.0; stepSize: 0.05
+                        scrollView: paramsTuningScroll
                         onMoved: settings.temperature = value
                     }
                     SliderSection {
@@ -246,6 +224,7 @@ Window {
                         hint:  "核采样阈值 (0.0 – 1.0)"
                         value: settings.topP
                         from: 0.0; to: 1.0; stepSize: 0.01
+                        scrollView: paramsTuningScroll
                         onMoved: settings.topP = value
                     }
                     SliderSection {
@@ -253,6 +232,7 @@ Window {
                         hint:  "每步候选 token 数量 (1 – 200)"
                         value: settings.topK
                         from: 1; to: 200; stepSize: 1
+                        scrollView: paramsTuningScroll
                         onMoved: settings.topK = value
                     }
                     SliderSection {
@@ -260,6 +240,7 @@ Window {
                         hint:  "最大生成 token 数 (256 – 32768)"
                         value: settings.maxTokens
                         from: 256; to: 32768; stepSize: 256
+                        scrollView: paramsTuningScroll
                         onMoved: settings.maxTokens = value
                     }
 
@@ -339,7 +320,7 @@ Window {
                         settings.maxTokens   = 4096
                         // API 默认值
                         settings.apiUrl      = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-                        settings.modelName   = "qwen-plus"
+                        settings.modelName   = "qwen3-plus"
                     }
                 }
                 Button {
@@ -388,6 +369,8 @@ Window {
         property real   from:     0
         property real   to:       1
         property real   stepSize: 0.01
+        // 所在的 ScrollView（用于按下时临时禁用滚动，避免抢事件）
+        property Item   scrollView: null
         signal moved(real value)
 
         Layout.fillWidth: true
@@ -414,14 +397,20 @@ Window {
             stepSize: parent.stepSize
             value: parent.value
 
-            // 关键：按下时告知父级 ScrollView 不要拦截水平拖拽
+            // 关键：按下时让所属 ScrollView 暂停滚动，避免抢事件
             onPressedChanged: {
                 if (pressed) {
-                    // 阻止 ScrollView 在滑块范围内抢夺触摸/鼠标事件
                     sliderControl.forceActiveFocus()
+                }
+                if (scrollView && scrollView.contentItem) {
+                    scrollView.contentItem.interactive = !pressed
                 }
             }
             onMoved: parent.moved(value)
+            onValueChanged: {
+                // 支持：点击轨道跳转、键盘调整等也能更新设置值
+                if (pressed) parent.moved(value)
+            }
 
             background: Rectangle {
                 x: sliderControl.leftPadding
@@ -439,13 +428,22 @@ Window {
                 y: sliderControl.topPadding + sliderControl.availableHeight / 2 - height / 2
                 width: 16; height: 16; radius: 8
                 color: sliderControl.pressed ? Qt.lighter(cAccent, 1.2) : cAccent
+            }
 
-                // 放大点击热区，更易抓取
-                MouseArea {
-                    anchors.fill: parent
-                    anchors.margins: -6
-                    // 直接透传给 Slider，不拦截
-                    onPressed: mouse.accepted = false
+            // 支持鼠标滚轮调节参数
+            MouseArea {
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton      // 只接收滚轮事件，不影响点击和拖动
+                onWheel: function(wheel) {
+                    var step = parent.stepSize > 0 ? parent.stepSize : 0.01
+                    var dir = wheel.angleDelta.y > 0 ? 1 : -1
+                    var newVal = sliderControl.value + dir * step
+                    newVal = Math.max(sliderControl.from, Math.min(sliderControl.to, newVal))
+                    if (newVal !== sliderControl.value) {
+                        sliderControl.value = newVal
+                        parent.moved(sliderControl.value)
+                    }
+                    wheel.accepted = true
                 }
             }
         }

@@ -34,6 +34,7 @@ void Settings::setTopP(double v)                { if (m_topP        != v) { m_to
 void Settings::setTopK(int v)                   { if (m_topK        != v) { m_topK        = v; emit topKChanged(); } }
 void Settings::setMaxTokens(int v)              { if (m_maxTokens   != v) { m_maxTokens   = v; emit maxTokensChanged(); } }
 void Settings::setSystemPrompt(const QString &v){ if (m_systemPrompt!= v) { m_systemPrompt= v; emit systemPromptChanged(); } }
+void Settings::setShowThinking(bool v)          { if (m_showThinking!= v) { m_showThinking= v; emit showThinkingChanged(); } }
 
 // ── 模型列表管理 ──────────────────────────────────────────────────────────────
 void Settings::addModel(const QString &model) {
@@ -57,8 +58,33 @@ void Settings::removeModel(const QString &model) {
 void Settings::refreshModels() {
     if (!m_nam) m_nam = new QNetworkAccessManager(this);
 
+    // 标记刷新开始
+    if (!m_modelsRefreshing) {
+        m_modelsRefreshing = true;
+        m_modelsStatus = tr("正在从 API 刷新模型列表…");
+        emit modelsRefreshingChanged();
+        emit modelsStatusChanged();
+    }
+
     // 从当前 apiUrl 推导出 /v1/models 地址（兼容 https://api.openai.com 或带 /v1 的端点）
+    if (m_apiUrl.trimmed().isEmpty()) {
+        qWarning() << "refreshModels error:" << "apiUrl is empty";
+        m_modelsStatus = tr("刷新失败：API 地址为空");
+        m_modelsRefreshing = false;
+        emit modelsRefreshingChanged();
+        emit modelsStatusChanged();
+        return;
+    }
+
     QUrl base(m_apiUrl);
+    if (!base.isValid() || base.scheme().isEmpty()) {
+        qWarning() << "refreshModels error:" << "invalid apiUrl:" << m_apiUrl;
+        m_modelsStatus = tr("刷新失败：API 地址无效");
+        m_modelsRefreshing = false;
+        emit modelsRefreshingChanged();
+        emit modelsStatusChanged();
+        return;
+    }
     QString path = base.path();
 
     // 1) 如果没有 /v1，就先补 /v1
@@ -91,8 +117,14 @@ void Settings::refreshModels() {
     QNetworkReply *reply = m_nam->get(req);
     QObject::connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         reply->deleteLater();
+
+        m_modelsRefreshing = false;
+
         if (reply->error() != QNetworkReply::NoError) {
             qWarning() << "refreshModels error:" << reply->errorString();
+            m_modelsStatus = tr("刷新失败：") + reply->errorString();
+            emit modelsRefreshingChanged();
+            emit modelsStatusChanged();
             return;
         }
 
@@ -112,6 +144,9 @@ void Settings::refreshModels() {
 
         if (models.isEmpty()) {
             qWarning() << "refreshModels: no models found in response";
+            m_modelsStatus = tr("刷新失败：返回中没有模型数据");
+            emit modelsRefreshingChanged();
+            emit modelsStatusChanged();
             return;
         }
 
@@ -122,6 +157,10 @@ void Settings::refreshModels() {
 
         emit modelListChanged();
         save();
+
+        m_modelsStatus = tr("刷新成功，共加载 %1 个模型").arg(m_modelList.size());
+        emit modelsRefreshingChanged();
+        emit modelsStatusChanged();
     });
 }
 
@@ -136,6 +175,7 @@ void Settings::save() {
     root["topK"]         = m_topK;
     root["maxTokens"]    = m_maxTokens;
     root["systemPrompt"] = m_systemPrompt;
+    root["showThinking"] = m_showThinking;
 
     QJsonArray models;
     for (const QString &m : m_modelList) models.append(m);
@@ -162,6 +202,7 @@ void Settings::load() {
     if (root.contains("topK"))         m_topK         = root["topK"].toInt(50);
     if (root.contains("maxTokens"))    m_maxTokens    = root["maxTokens"].toInt(4096);
     if (root.contains("systemPrompt")) m_systemPrompt = root["systemPrompt"].toString();
+    if (root.contains("showThinking")) m_showThinking = root["showThinking"].toBool(false);
 
     if (root.contains("modelList")) {
         m_modelList.clear();

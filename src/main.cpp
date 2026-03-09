@@ -1,7 +1,6 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
-#include <QtWebEngineQuick/qtwebenginequickglobal.h>
 
 #include "about.h"
 #include "settings.h"
@@ -9,11 +8,6 @@
 #include "mainview.h"
 
 int main(int argc, char *argv[]) {
-    // WebEngine 必须在 QGuiApplication 创建前初始化
-    qputenv("QT_WEBENGINE_DISABLE_GPU",   "1");
-    qputenv("QTWEBENGINE_DISABLE_SANDBOX","1");
-    QtWebEngineQuick::initialize();
-
     QGuiApplication app(argc, argv);
     app.setOrganizationName("ChatAgent");
     app.setApplicationName("ChatAgent");

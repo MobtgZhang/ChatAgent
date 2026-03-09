@@ -336,9 +336,50 @@ ApplicationWindow {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (isFolder) history.toggleExpand(node.id)
-                                    else          mainView.loadSession(node.id)
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onClicked: function(mouse) {
+                                    if (mouse.button === Qt.RightButton) {
+                                        // 避免在菜单已打开时反复 popup 造成 Fusion/Menu.qml 的 polish 循环
+                                        if (historyItemMenu.visible)
+                                            return
+                                        historyItemMenu.targetNode = node
+                                        // 使用 open() 让样式自行决定位置，减少手动定位引起的样式抖动
+                                        historyItemMenu.open()
+                                        return
+                                    }
+
+                                    if (isFolder)
+                                        history.toggleExpand(node.id)
+                                    else
+                                        mainView.loadSession(node.id)
+                                }
+                            }
+
+                            // 拖放支持：将会话/文件夹拖动到文件夹中
+                            Drag.active: dragArea.drag.active
+                            Drag.hotSpot.x: width / 2
+                            Drag.hotSpot.y: height / 2
+                            Drag.mimeData: { "application/x-history-id": node.id }
+
+                            MouseArea {
+                                id: dragArea
+                                anchors.fill: parent
+                                drag.target: null
+                                // 仅用于左键拖拽，避免右键重复弹出菜单造成 polish 循环日志
+                                acceptedButtons: Qt.LeftButton
+                            }
+
+                            // 仅文件夹作为放置目标
+                            DropArea {
+                                anchors.fill: parent
+                                enabled: isFolder
+                                keys: [ "application/x-history-id" ]
+                                onDropped: function(drop) {
+                                    var srcId = drop.mimeData["application/x-history-id"]
+                                    if (!srcId || srcId === node.id)
+                                        return
+                                    history.moveNode(srcId, node.id)
+                                    drop.acceptProposedAction()
                                 }
                             }
                         }
@@ -446,6 +487,32 @@ ApplicationWindow {
                             onClicked: clearDialog.open()
                         }
                     }
+
+                    // 显示/隐藏思考过程（右上角）
+                    Rectangle {
+                        width: 110; height: 30; radius: 5
+                        color: thinkToggleHover.hovered
+                            ? Qt.lighter(cHighlight, 1.12)
+                            : (settings.showThinking ? "#3D4270" : cHighlight)
+                        border.color: settings.showThinking ? cAccent : "transparent"
+                        Row {
+                            anchors.centerIn: parent; spacing: 6
+                            Text { text: "🧠"; font.pixelSize: 12 }
+                            Text {
+                                text: settings.showThinking ? "思考：开" : "思考：关"
+                                color: cText
+                                font.pixelSize: 12
+                            }
+                        }
+                        ToolTip.text: settings.showThinking ? "点击隐藏思考过程" : "点击显示思考过程"
+                        ToolTip.visible: thinkToggleHover.hovered
+                        ToolTip.delay: 600
+                        HoverHandler { id: thinkToggleHover }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: settings.showThinking = !settings.showThinking
+                        }
+                    }
                 }
 
                 Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: cBorder }
@@ -539,23 +606,145 @@ ApplicationWindow {
                 spacing: 8
                 topMargin: 16; bottomMargin: 8
 
-                model: mainView.messages
+                model: mainView.messagesModel
 
                 delegate: ChatMessage {
                     width: chatListView.width
-                    role: (modelData && modelData.role) ? modelData.role : "user"
-                    //role:             modelData.role       || "user"
-                    msgContent: (modelData && modelData.content) ? modelData.content : ""
-                    //msgContent:       modelData.content    || ""
-                    thinkingContent:  modelData.thinking   || ""
-                    isThinking: !!modelData.isThinking
-                    //isThinking:       modelData.isThinking || false
+                    role: (model && model.role) ? model.role : "user"
+                    msgContent: (model && model.content) ? model.content : ""
+                    thinkingContent: (model && model.thinking) ? model.thinking : ""
+                    isThinking: (model && model.isThinking) ? true : false
                     messageIndex:     index
                 }
 
                 // 自动滚动到底部
                 onCountChanged:         Qt.callLater(positionViewAtEnd)
                 onContentHeightChanged: { if (atYEnd) Qt.callLater(positionViewAtEnd) }
+            }
+
+            // ── 右下角：对话进度 (当前节点/所有节点) ───────────────────────────
+            Text {
+                anchors {
+                    right: parent.right
+                    bottom: inputPanel.top
+                    rightMargin: 14
+                    bottomMargin: 4
+                }
+                text: chatListView.count > 0
+                      ? (chatListView.count + " / " + chatListView.count)
+                      : "0 / 0"
+                color: cMuted
+                font.pixelSize: 11
+            }
+        }
+    }
+
+    // 文件夹重命名对话框（用于历史树右键）
+    Dialog {
+        id: folderRenameDialog
+        title: "重命名文件夹"
+        modal: true
+        anchors.centerIn: parent
+        width: 320
+
+        property string targetId: ""
+
+        background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+
+        contentItem: Column {
+            spacing: 10; padding: 16
+            Text { text: "请输入新名称："; color: cText; font.pixelSize: 13 }
+            TextField {
+                id: folderRenameField
+                width: 280; height: 36
+                color: cText; font.pixelSize: 13
+                background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
+                leftPadding: 10
+                selectByMouse: true
+                Keys.onReturnPressed: {
+                    if (folderRenameDialog.targetId !== "") {
+                        history.renameNode(folderRenameDialog.targetId, text)
+                    }
+                    folderRenameDialog.close()
+                }
+            }
+        }
+
+        footer: Row {
+            spacing: 8; padding: 12; layoutDirection: Qt.RightToLeft
+            Button {
+                text: "确定"; width: 80; height: 32
+                contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
+                                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { radius: 5; color: cAccent }
+                onClicked: {
+                    if (folderRenameDialog.targetId !== "") {
+                        history.renameNode(folderRenameDialog.targetId, folderRenameField.text)
+                    }
+                    folderRenameDialog.close()
+                }
+            }
+            Button {
+                text: "取消"; width: 80; height: 32
+                contentItem: Text { text: parent.text; color: cText; font.pixelSize: 13;
+                                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
+                onClicked: folderRenameDialog.close()
+            }
+        }
+
+        onAboutToShow: {
+            folderRenameField.forceActiveFocus()
+            folderRenameField.selectAll()
+        }
+    }
+
+    // ── 历史项右键菜单 ──────────────────────────────────────────────────────────
+    Menu {
+        id: historyItemMenu
+        property var targetNode: null
+
+        MenuItem {
+            text: "重命名"
+            onTriggered: {
+                if (!historyItemMenu.targetNode)
+                    return
+                var n = historyItemMenu.targetNode
+                if (n.type === "session") {
+                    if (n.id !== mainView.currentSession)
+                        mainView.loadSession(n.id)
+                    renameDialog.open()
+                } else if (n.type === "folder") {
+                    folderRenameDialog.targetId = n.id
+                    folderRenameField.text = n.name
+                    folderRenameDialog.open()
+                }
+            }
+        }
+
+        MenuItem {
+            text: "删除"
+            onTriggered: {
+                if (!historyItemMenu.targetNode)
+                    return
+                history.deleteNode(historyItemMenu.targetNode.id)
+            }
+        }
+
+        MenuSeparator {}
+
+        MenuItem {
+            text: "新建文件夹"
+            onTriggered: {
+                if (!historyItemMenu.targetNode)
+                    return
+                var n = historyItemMenu.targetNode
+                var pid = ""
+                if (n.type === "folder")
+                    pid = n.id
+                else if (n.parentId)
+                    pid = n.parentId
+                history.createFolder("新文件夹", pid)
             }
         }
     }

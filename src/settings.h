@@ -24,6 +24,14 @@ class Settings : public QObject {
     // ── 系统提示词 ───────────────────────────────────────────────────────────
     Q_PROPERTY(QString systemPrompt READ systemPrompt WRITE setSystemPrompt NOTIFY systemPromptChanged)
 
+    // ── UI ──────────────────────────────────────────────────────────────────
+    // 是否显示“思考过程”
+    Q_PROPERTY(bool showThinking READ showThinking WRITE setShowThinking NOTIFY showThinkingChanged)
+
+    // 模型刷新状态与提示信息（用于设置界面显示“刷新中/成功/失败”）
+    Q_PROPERTY(bool    modelsRefreshing READ modelsRefreshing NOTIFY modelsRefreshingChanged)
+    Q_PROPERTY(QString modelsStatus     READ modelsStatus     NOTIFY modelsStatusChanged)
+
 public:
     explicit Settings(QObject *parent = nullptr);
 
@@ -37,6 +45,9 @@ public:
     int        topK()         const { return m_topK; }
     int        maxTokens()    const { return m_maxTokens; }
     QString    systemPrompt() const { return m_systemPrompt; }
+    bool       showThinking() const { return m_showThinking; }
+    bool       modelsRefreshing() const { return m_modelsRefreshing; }
+    QString    modelsStatus() const     { return m_modelsStatus; }
 
     // Setters
     void setApiKey(const QString &v);
@@ -47,6 +58,7 @@ public:
     void setTopK(int v);
     void setMaxTokens(int v);
     void setSystemPrompt(const QString &v);
+    void setShowThinking(bool v);
 
     // Model list management
     Q_INVOKABLE void addModel(const QString &model);
@@ -67,6 +79,9 @@ signals:
     void topKChanged();
     void maxTokensChanged();
     void systemPromptChanged();
+    void showThinkingChanged();
+    void modelsRefreshingChanged();
+    void modelsStatusChanged();
 
 private:
     QString     m_apiKey;
@@ -81,6 +96,10 @@ private:
     int         m_topK        = 50;
     int         m_maxTokens   = 4096;
     QString     m_systemPrompt = QStringLiteral("You are a helpful assistant.");
+    bool        m_showThinking = false;
+
+    bool        m_modelsRefreshing = false;
+    QString     m_modelsStatus;
 
     QNetworkAccessManager *m_nam = nullptr;
 

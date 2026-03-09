@@ -7,6 +7,9 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QPointer>
+#include <QAbstractItemModel>
+
+#include "messagemodel.h"
 
 class Settings;
 class History;
@@ -14,7 +17,7 @@ class History;
 class MainView : public QObject {
     Q_OBJECT
 
-    Q_PROPERTY(QVariantList messages        READ messages        NOTIFY messagesChanged)
+    Q_PROPERTY(QAbstractItemModel* messagesModel READ messagesModel CONSTANT)
     Q_PROPERTY(QString      currentSession  READ currentSession  NOTIFY currentSessionChanged)
     Q_PROPERTY(QString      sessionName     READ sessionName     NOTIFY sessionNameChanged)
     Q_PROPERTY(bool         isStreaming     READ isStreaming     NOTIFY isStreamingChanged)
@@ -23,7 +26,7 @@ public:
     explicit MainView(Settings *settings, History *history,
                       QObject *parent = nullptr);
 
-    QVariantList messages()       const { return m_messages; }
+    QAbstractItemModel* messagesModel() { return &m_messagesModel; }
     QString      currentSession() const { return m_currentSession; }
     QString      sessionName()    const { return m_sessionName; }
     bool         isStreaming()    const { return m_isStreaming; }
@@ -44,7 +47,6 @@ public:
     Q_INVOKABLE void renameSession(const QString &name);
 
 signals:
-    void messagesChanged();
     void currentSessionChanged();
     void sessionNameChanged();
     void isStreamingChanged();
@@ -54,7 +56,7 @@ private:
     Settings *m_settings;
     History  *m_history;
 
-    QVariantList              m_messages;
+    MessageModel              m_messagesModel;
     QString                   m_currentSession;
     QString                   m_sessionName;
     bool                      m_isStreaming = false;
