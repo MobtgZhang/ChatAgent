@@ -23,7 +23,7 @@ public:
     QString description() const { return QStringLiteral("支持 OpenAI 兼容接口的本地 AI 聊天客户端，\n支持流式输出、Markdown 渲染与数学公式显示。"); }
     QString qtVersion()   const { return QStringLiteral(QT_VERSION_STR); }
     QString license()     const { return QStringLiteral("MIT License"); }
-    QString homepage()    const { return QStringLiteral("https://github.com"); }
+    QString homepage()    const { return QStringLiteral("https://github.com/mobtgzhang/chat-agent"); }
 };
 
 #endif // ABOUT_H

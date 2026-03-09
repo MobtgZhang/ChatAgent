@@ -213,11 +213,11 @@ Window {
 
                     SliderSection {
                         label: "Temperature"
-                        hint:  "控制随机性，越大越有创意 (0.0 – 2.0)"
+                        hint:  "控制随机性，越大越有创意 (0.0 – 1.0)"
                         value: settings.temperature
-                        from: 0.0; to: 2.0; stepSize: 0.05
+                        from: 0.0; to: 1.0; stepSize: 0.05
                         scrollView: paramsTuningScroll
-                        onMoved: settings.temperature = value
+                        onMoved: function(value) { settings.temperature = value }
                     }
                     SliderSection {
                         label: "Top-P"
@@ -225,7 +225,7 @@ Window {
                         value: settings.topP
                         from: 0.0; to: 1.0; stepSize: 0.01
                         scrollView: paramsTuningScroll
-                        onMoved: settings.topP = value
+                        onMoved: function(value) { settings.topP = value }
                     }
                     SliderSection {
                         label: "Top-K"
@@ -233,7 +233,7 @@ Window {
                         value: settings.topK
                         from: 1; to: 200; stepSize: 1
                         scrollView: paramsTuningScroll
-                        onMoved: settings.topK = value
+                        onMoved: function(value) { settings.topK = value }
                     }
                     SliderSection {
                         label: "Max Tokens"
@@ -241,7 +241,7 @@ Window {
                         value: settings.maxTokens
                         from: 256; to: 32768; stepSize: 256
                         scrollView: paramsTuningScroll
-                        onMoved: settings.maxTokens = value
+                        onMoved: function(value) { settings.maxTokens = value }
                     }
 
                     Item { height: 20 }
@@ -361,7 +361,7 @@ Window {
         selectByMouse: true
     }
 
-    // ── 内部组件：滑块分组 ───────────────────────────────────────────────────
+    // ── 内部组件：滑块分组（滑块 + 右侧可编辑数字框）──────────────────────────
     component SliderSection: ColumnLayout {
         property string label:    ""
         property string hint:     ""
@@ -369,81 +369,101 @@ Window {
         property real   from:     0
         property real   to:       1
         property real   stepSize: 0.01
-        // 所在的 ScrollView（用于按下时临时禁用滚动，避免抢事件）
         property Item   scrollView: null
         signal moved(real value)
+
+        property real displayValue: value
+        property bool isInt: stepSize >= 1
 
         Layout.fillWidth: true
         spacing: 4
 
-        RowLayout {
-            Layout.fillWidth: true
-            Text {
-                text: parent.parent.label
-                color: cText; font.pixelSize: 13; font.bold: true
-                Layout.fillWidth: true
+        onValueChanged: {
+            if (!sliderControl.pressed && !valueEdit.activeFocus) {
+                sliderControl.value = value
+                displayValue = value
+                valueEdit.text = formatVal(value)
             }
-            Text {
-                text: parent.parent.value.toFixed(parent.parent.stepSize < 1 ? 2 : 0)
-                color: cAccent; font.pixelSize: 13; font.bold: true
-            }
+        }
+
+        function formatVal(v) { return isInt ? Math.round(v).toString() : v.toFixed(2) }
+        function clampVal(v) { return Math.max(from, Math.min(to, v)) }
+
+        Component.onCompleted: {
+            sliderControl.value = value
+            displayValue = value
+            valueEdit.text = formatVal(value)
+        }
+
+        Text {
+            text: parent.label
+            color: cText; font.pixelSize: 13; font.bold: true
         }
         Text { text: parent.hint; color: cMuted; font.pixelSize: 11 }
 
-        Slider {
-            id: sliderControl
+        RowLayout {
             Layout.fillWidth: true
-            from: parent.from; to: parent.to
-            stepSize: parent.stepSize
-            value: parent.value
+            spacing: 12
 
-            // 关键：按下时让所属 ScrollView 暂停滚动，避免抢事件
-            onPressedChanged: {
-                if (pressed) {
-                    sliderControl.forceActiveFocus()
+            Slider {
+                id: sliderControl
+                Layout.fillWidth: true
+                Layout.minimumHeight: 28
+                from: parent.parent.from
+                to: parent.parent.to
+                stepSize: parent.parent.stepSize
+                value: 0
+
+                onPressedChanged: {
+                    if (pressed) sliderControl.forceActiveFocus()
+                    if (scrollView && scrollView.contentItem)
+                        scrollView.contentItem.interactive = !pressed
                 }
-                if (scrollView && scrollView.contentItem) {
-                    scrollView.contentItem.interactive = !pressed
+                onMoved: {
+                    parent.parent.displayValue = value
+                    parent.parent.moved(value)
+                    valueEdit.text = parent.parent.formatVal(value)
                 }
-            }
-            onMoved: parent.moved(value)
-            onValueChanged: {
-                // 支持：点击轨道跳转、键盘调整等也能更新设置值
-                if (pressed) parent.moved(value)
-            }
-
-            background: Rectangle {
-                x: sliderControl.leftPadding
-                y: sliderControl.topPadding + sliderControl.availableHeight / 2 - height / 2
-                width: sliderControl.availableWidth; height: 4; radius: 2; color: cBorder
-
-                Rectangle {
-                    width: sliderControl.visualPosition * parent.width
-                    height: 4; radius: 2; color: cAccent
-                }
-            }
-            handle: Rectangle {
-                x: sliderControl.leftPadding +
-                   sliderControl.visualPosition * (sliderControl.availableWidth - width)
-                y: sliderControl.topPadding + sliderControl.availableHeight / 2 - height / 2
-                width: 16; height: 16; radius: 8
-                color: sliderControl.pressed ? Qt.lighter(cAccent, 1.2) : cAccent
-            }
-
-            // 支持鼠标滚轮调节参数
-            MouseArea {
-                anchors.fill: parent
-                acceptedButtons: Qt.NoButton      // 只接收滚轮事件，不影响点击和拖动
-                onWheel: function(wheel) {
-                    var step = parent.stepSize > 0 ? parent.stepSize : 0.01
-                    var dir = wheel.angleDelta.y > 0 ? 1 : -1
-                    var newVal = sliderControl.value + dir * step
-                    newVal = Math.max(sliderControl.from, Math.min(sliderControl.to, newVal))
-                    if (newVal !== sliderControl.value) {
-                        sliderControl.value = newVal
-                        parent.moved(sliderControl.value)
+                onValueChanged: {
+                    if (pressed) {
+                        parent.parent.displayValue = value
+                        parent.parent.moved(value)
+                        valueEdit.text = parent.parent.formatVal(value)
                     }
-                    wheel.accepted = true
+                }
+
+                palette.accent: cAccent
+                palette.base: cInput
+                palette.mid: cBorder
+            }
+            TextField {
+                id: valueEdit
+                Layout.preferredWidth: 72
+                Layout.alignment: Qt.AlignVCenter
+                horizontalAlignment: TextInput.AlignRight
+                color: cText; font.pixelSize: 13
+                selectByMouse: true
+                background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
+                leftPadding: 8; rightPadding: 8
+
+                onEditingFinished: {
+                    var ss = parent.parent
+                    var v = parseFloat(text)
+                    if (!isNaN(v)) {
+                        if (ss.isInt) v = Math.round(v)
+                        v = ss.clampVal(v)
+                        ss.displayValue = v
+                        ss.moved(v)
+                        sliderControl.value = v
+                        text = ss.formatVal(v)
+                    } else {
+                        text = ss.formatVal(ss.displayValue)
+                    }
+                }
+                onTextChanged: {
+                    if (!activeFocus) return
+                    var v = parseFloat(text)
+                    if (!isNaN(v)) parent.parent.displayValue = parent.parent.clampVal(v)
                 }
             }
         }
