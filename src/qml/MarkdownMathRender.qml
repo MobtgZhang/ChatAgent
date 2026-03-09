@@ -2,6 +2,7 @@
 // 使用 WebEngineView + marked + KaTeX 渲染 Markdown 与 LaTeX 数学公式
 import QtQuick 2.15
 import QtWebEngine
+import QtWebChannel
 
 Item {
     id: root
@@ -25,7 +26,14 @@ Item {
         return "#" + rh + gh + bh
     }
 
+    WebChannel {
+        id: webChannel
+    }
+
     Component.onCompleted: {
+        if (typeof clipboardBridge !== "undefined")
+            webChannel.registerObject("clipboard", clipboardBridge)
+        webView.webChannel = webChannel
         webView.url = "qrc:/src/qml/md_render.html"
     }
 

@@ -6,6 +6,9 @@
 #include <QString>
 #include <QList>
 #include <QDateTime>
+#include <QAbstractListModel>
+
+#include "historylistmodel.h"
 
 // ── 树节点结构体 ──────────────────────────────────────────────────────────────
 struct HistoryNode {
@@ -14,6 +17,7 @@ struct HistoryNode {
     QString  name;
     QString  parentId;  // 空字符串 = 根节点
     bool     expanded = true;
+    int      order = 0; // 同层兄弟节点的排序（用于拖拽调整）
     qint64   createdAt = 0;
     qint64   updatedAt = 0;
 };
@@ -22,13 +26,13 @@ struct HistoryNode {
 class History : public QObject {
     Q_OBJECT
 
-    // 供 QML 使用的展开后扁平树列表
-    Q_PROPERTY(QVariantList flatNodes READ flatNodes NOTIFY flatNodesChanged)
+    // 供 QML ListView 使用的模型，确保点击加载和视图更新正确工作
+    Q_PROPERTY(QAbstractListModel* flatModel READ flatModel CONSTANT)
 
 public:
     explicit History(QObject *parent = nullptr);
 
-    QVariantList flatNodes() const { return m_flatNodes; }
+    QAbstractListModel* flatModel() const { return m_flatModel; }
 
     // ── 节点操作 ──────────────────────────────────────────────────────────────
     Q_INVOKABLE QString createSession(const QString &name,
@@ -39,10 +43,13 @@ public:
     Q_INVOKABLE void    renameNode(const QString &id, const QString &name);
     Q_INVOKABLE void    toggleExpand(const QString &id);
     Q_INVOKABLE void    moveNode(const QString &id, const QString &newParentId);
+    Q_INVOKABLE void    reorderNode(const QString &movedId, const QString &targetId);
+    Q_INVOKABLE QVariantList getFolderOptions(const QString &movingNodeId) const;
 
     // ── 会话文件操作 ──────────────────────────────────────────────────────────
     Q_INVOKABLE QString sessionFilePath(const QString &id) const;
     Q_INVOKABLE void    touchSession(const QString &id); // 更新 updatedAt
+    Q_INVOKABLE void    updateSessionNameInFile(const QString &id, const QString &name);
 
     // ── 工具 ──────────────────────────────────────────────────────────────────
     Q_INVOKABLE QString firstSessionId() const;          // 最近的 session id
@@ -51,8 +58,9 @@ signals:
     void flatNodesChanged();
 
 private:
-    QList<HistoryNode> m_nodes;
-    QVariantList       m_flatNodes;
+    QList<HistoryNode>  m_nodes;
+    QVariantList        m_flatNodes;
+    HistoryListModel   *m_flatModel;
 
     QString dataDir()     const;
     QString indexPath()   const;

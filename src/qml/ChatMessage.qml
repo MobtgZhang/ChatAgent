@@ -24,6 +24,10 @@ Item {
         if (!s || typeof s !== "string") return false
         return /\$\$|\$[^\s$]|\\[\[\()\]]/.test(s)
     }
+    function hasCodeBlocks(s) {
+        if (!s || typeof s !== "string") return false
+        return /```[\s\S]*?```/.test(s)
+    }
 
     Component {
         id: mdRenderComp
@@ -49,6 +53,11 @@ Item {
             if (settings.showThinking && isAI && thinkingContent !== "")
                 thinkExpanded = true
         }
+    }
+    // 历史加载后：与思考按钮切换时保持一致的展开状态
+    Component.onCompleted: {
+        if (settings.showThinking && isAI && thinkingContent !== "")
+            thinkExpanded = true
     }
 
     property real thinkTime: 0.0
@@ -130,7 +139,7 @@ Item {
                     Loader {
                         id: thinkLoader
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
-                        sourceComponent: root.hasMath(root.thinkingContent) ? mathRenderComp : mdRenderComp
+                        sourceComponent: (root.hasMath(root.thinkingContent) || root.hasCodeBlocks(root.thinkingContent)) ? mathRenderComp : mdRenderComp
                         onLoaded: {
                             item.markdownText = root.thinkingContent
                             item.textColor = "#C9CDD4"
@@ -171,7 +180,7 @@ Item {
                         id: contentLoader
                         width: contentCol.width
                         visible: root.msgContent !== "" && !root.editing
-                        sourceComponent: root.hasMath(root.msgContent) ? mathRenderComp : mdRenderComp
+                        sourceComponent: (root.hasMath(root.msgContent) || root.hasCodeBlocks(root.msgContent)) ? mathRenderComp : mdRenderComp
                         onLoaded: {
                             item.markdownText = root.msgContent
                             item.textColor = isAI ? "#DBDEE1" : "white"
@@ -325,19 +334,19 @@ Item {
                     }
                 }
 
-                // 修改
+                // 修改（铅笔图标）
                 Rectangle {
-                    width: 36
+                    width: 24
                     height: 24
                     radius: 4
                     color: editHover.hovered ? "#5C5F66" : "transparent"
                     // 仅用户消息支持“修改”
                     visible: !root.editing && !root.isAI
-                    Text {
+                    Image {
                         anchors.centerIn: parent
-                        text: qsTr("修改")
-                        color: "#B5BAC1"
-                        font.pixelSize: 11
+                        source: "qrc:/src/qml/pencil.svg"
+                        sourceSize: Qt.size(14, 14)
+                        opacity: 0.85
                     }
                     HoverHandler { id: editHover }
                     MouseArea {
@@ -351,18 +360,18 @@ Item {
                     }
                 }
 
-                // 复制
+                // 复制（与代码块复制按钮一致）
                 Rectangle {
-                    width: 36
+                    width: 24
                     height: 24
                     radius: 4
                     color: copyHover.hovered ? "#5C5F66" : "transparent"
                     visible: !root.editing
-                    Text {
+                    Image {
                         anchors.centerIn: parent
-                        text: qsTr("复制")
-                        color: "#B5BAC1"
-                        font.pixelSize: 11
+                        source: "qrc:/src/qml/copy.svg"
+                        sourceSize: Qt.size(14, 14)
+                        opacity: 0.85
                     }
                     HoverHandler { id: copyHover }
                     MouseArea {
@@ -428,6 +437,8 @@ Item {
         }
     }
     onThinkingContentChanged: {
+        if (!isThinking && settings.showThinking && isAI && thinkingContent !== "")
+            thinkExpanded = true
         if (thinkLoader.item)
             thinkLoader.item.markdownText = root.thinkingContent
     }

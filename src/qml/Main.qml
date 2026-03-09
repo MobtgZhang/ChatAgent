@@ -97,6 +97,54 @@ ApplicationWindow {
         }
     }
 
+    // ── 删除确认对话框 ────────────────────────────────────────────────────────
+    Dialog {
+        id: deleteNodeDialog
+        title: "删除"
+        modal: true
+        anchors.centerIn: parent
+        width: 320
+
+        property string targetId: ""
+        property string targetName: ""
+        property string targetType: ""
+
+        background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
+
+        contentItem: Column {
+            spacing: 12; padding: 16
+            Text {
+                text: (deleteNodeDialog.targetType === "folder"
+                       ? "确定要删除文件夹「" + deleteNodeDialog.targetName + "」吗？\n其内的所有对话和子文件夹也将被删除。此操作不可撤销。"
+                       : "确定要删除对话「" + deleteNodeDialog.targetName + "」吗？\n此操作不可撤销。")
+                color: cText; font.pixelSize: 14; lineHeight: 1.5; wrapMode: Text.Wrap
+                width: 280
+            }
+        }
+
+        footer: Row {
+            spacing: 8; padding: 12; layoutDirection: Qt.RightToLeft
+            Button {
+                text: "删除"; width: 80; height: 32
+                contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
+                                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { radius: 5; color: "#ED4245" }
+                onClicked: {
+                    if (deleteNodeDialog.targetId !== "")
+                        history.deleteNode(deleteNodeDialog.targetId)
+                    deleteNodeDialog.close()
+                }
+            }
+            Button {
+                text: "取消"; width: 80; height: 32
+                contentItem: Text { text: parent.text; color: cText; font.pixelSize: 13;
+                                    horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
+                onClicked: deleteNodeDialog.close()
+            }
+        }
+    }
+
     // ── 重命名输入框 ──────────────────────────────────────────────────────────
     Dialog {
         id: renameDialog
@@ -154,6 +202,8 @@ ApplicationWindow {
         anchors.centerIn: parent
         width: 320
 
+        property string parentId: ""
+
         background: Rectangle { color: "#1E1F22"; radius: 8; border.color: cBorder }
 
         contentItem: Column {
@@ -166,7 +216,12 @@ ApplicationWindow {
                 background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
                 leftPadding: 10
                 selectByMouse: true
-                Keys.onReturnPressed: { history.createFolder(text); folderDialog.close() }
+                Keys.onReturnPressed: {
+                    if (text.trim() !== "") {
+                        history.createFolder(text.trim(), folderDialog.parentId)
+                        folderDialog.close()
+                    }
+                }
             }
         }
 
@@ -177,7 +232,12 @@ ApplicationWindow {
                 contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cAccent }
-                onClicked: { history.createFolder(folderNameField.text); folderDialog.close() }
+                onClicked: {
+                    if (folderNameField.text.trim() !== "") {
+                        history.createFolder(folderNameField.text.trim(), folderDialog.parentId)
+                        folderDialog.close()
+                    }
+                }
             }
             Button {
                 text: "取消"; width: 80; height: 32
@@ -264,7 +324,10 @@ ApplicationWindow {
                             HoverHandler { id: folderHover }
                             MouseArea {
                                 anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: folderDialog.open()
+                                onClicked: {
+                                    folderDialog.parentId = ""
+                                    folderDialog.open()
+                                }
                             }
                         }
                     }
@@ -277,7 +340,7 @@ ApplicationWindow {
                     Layout.fillHeight: true
                     Layout.minimumHeight: 80
                     clip: true
-                    model: history.flatNodes
+                    model: history.flatModel
                     spacing: 1
                     ScrollBar.vertical: ScrollBar {
                         policy: ScrollBar.AsNeeded
@@ -294,34 +357,76 @@ ApplicationWindow {
                     }
 
                     delegate: Item {
+                        id: delegateRoot
                         width: historyList.width
                         height: 36
 
-                        readonly property var  node:      modelData
-                        readonly property bool isSession: node.type === "session"
-                        readonly property bool isFolder:  node.type === "folder"
-                        readonly property bool isCurrent: isSession && node.id === mainView.currentSession
+                        property bool held: false  // 长按后为 true，用于启动拖拽
+                        property bool validDropTarget: false  // 拖拽悬停时，是否为有效放置目标（同层兄弟）
+
+                        readonly property string nodeId:   model.nodeId || ""
+                        readonly property string nodeType: model.nodeType || ""
+                        readonly property string nodeName: model.nodeName || ""
+                        readonly property string nodeParentId: model.nodeParentId || ""
+                        readonly property int    nodeDepth: model.nodeDepth || 0
+                        readonly property bool   nodeExpanded: model.nodeExpanded !== false
+                        readonly property bool   isSession: nodeType === "session"
+                        readonly property bool   isFolder:   nodeType === "folder"
+                        readonly property bool   isCurrent: isSession && nodeId === mainView.currentSession
+
+                        Drag.active: held
+                        Drag.hotSpot.x: width / 2
+                        Drag.hotSpot.y: height / 2
+                        Drag.source: delegateRoot
+                        Drag.keys: ["history-node"]
 
                         Rectangle {
-                            anchors { fill: parent; leftMargin: 6; rightMargin: 6}
+                            id: rowRect
+                            anchors { fill: parent; leftMargin: 6; rightMargin: 6 }
                             radius: 5
-                            color: isCurrent ? "#3D4270"
-                                : itemHover.hovered ? cHighlight : "transparent"
+                            color: {
+                                if (dropArea.containsDrag && validDropTarget) return cAccent + "40"
+                                if (isCurrent) return "#3D4270"
+                                if (itemHover.hovered) return cHighlight
+                                return "transparent"
+                            }
+                            opacity: Drag.active ? 0.6 : 1.0
 
                             RowLayout {
-                                anchors { fill: parent; leftMargin: node.depth * 14 + 8; rightMargin: 8 }
+                                anchors { fill: parent; leftMargin: nodeDepth * 14 + 8; rightMargin: 8 }
                                 spacing: 6
+
+                                // 拖拽手柄（长按后拖动可调整上下顺序）
+                                Text {
+                                    text: "⋮⋮"
+                                    font.pixelSize: 12
+                                    color: cMuted
+                                    opacity: itemHover.hovered ? 1 : 0.4
+                                    Layout.preferredWidth: 16
+                                    horizontalAlignment: Text.AlignHCenter
+                                    MouseArea {
+                                        id: dragHandle
+                                        anchors.fill: parent
+                                        cursorShape: held ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                                        pressAndHoldInterval: 400  // 长按 400ms 后启动拖拽
+                                        drag.target: held ? rowRect : undefined
+                                        drag.axis: Drag.YAxis
+                                        drag.smoothed: false
+                                        onPressAndHold: delegateRoot.held = true
+                                        onReleased: delegateRoot.held = false
+                                    }
+                                }
 
                                 Text {
                                     font.pixelSize: 13
                                     text: isFolder
-                                        ? (node.expanded ? "📂" : "📁")
+                                        ? (nodeExpanded ? "📂" : "📁")
                                         : (isCurrent ? "🗨️" : "💬")
                                 }
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: node.name
+                                    text: nodeName
                                     color: isCurrent ? "white" : cText
                                     font.pixelSize: 12; font.bold: isCurrent
                                     elide: Text.ElideRight
@@ -337,7 +442,12 @@ ApplicationWindow {
                                         HoverHandler { id: delHover }
                                         MouseArea {
                                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                            onClicked: history.deleteNode(node.id)
+                                            onClicked: {
+                                                deleteNodeDialog.targetId = nodeId
+                                                deleteNodeDialog.targetName = nodeName
+                                                deleteNodeDialog.targetType = nodeType
+                                                deleteNodeDialog.open()
+                                            }
                                         }
                                     }
                                 }
@@ -345,48 +455,56 @@ ApplicationWindow {
 
                             HoverHandler { id: itemHover }
                             MouseArea {
+                                id: mainMouseArea
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                acceptedButtons: Qt.RightButton
                                 onClicked: function(mouse) {
                                     if (mouse.button === Qt.RightButton) {
-                                        if (historyItemMenu.visible)
+                                        if (historyContextMenu.visible)
                                             return
-                                        historyItemMenu.targetNode = node
-                                        historyItemMenu.open()
-                                        return
+                                        historyContextMenu.targetNode = {
+                                            id: nodeId, type: nodeType, name: nodeName,
+                                            depth: nodeDepth, expanded: nodeExpanded,
+                                            parentId: model.nodeParentId || ""
+                                        }
+                                        var target = appWindow.overlay || appWindow.contentItem || appWindow
+                                        var pos = mainMouseArea.mapToItem(target, mouse.x, mouse.y)
+                                        historyContextMenu.openAt(pos.x, pos.y)
                                     }
-
-                                    if (isFolder)
-                                        history.toggleExpand(node.id)
-                                    else
-                                        mainView.loadSession(node.id)
                                 }
                             }
-
-                            Drag.active: dragArea.drag.active
-                            Drag.hotSpot.x: width / 2
-                            Drag.hotSpot.y: height / 2
-                            Drag.mimeData: { "application/x-history-id": node.id }
 
                             MouseArea {
-                                id: dragArea
-                                anchors.fill: parent
-                                drag.target: null
+                                id: mainClickArea
+                                anchors { fill: parent; leftMargin: nodeDepth * 14 + 8 + 16 + 6 }
+                                cursorShape: Qt.PointingHandCursor
                                 acceptedButtons: Qt.LeftButton
-                            }
-
-                            DropArea {
-                                anchors.fill: parent
-                                enabled: isFolder
-                                keys: [ "application/x-history-id" ]
-                                onDropped: function(drop) {
-                                    var srcId = drop.mimeData["application/x-history-id"]
-                                    if (!srcId || srcId === node.id)
-                                        return
-                                    history.moveNode(srcId, node.id)
-                                    drop.acceptProposedAction()
+                                onClicked: {
+                                    if (isFolder)
+                                        history.toggleExpand(nodeId)
+                                    else if (nodeId)
+                                        mainView.loadSession(nodeId)
                                 }
+                            }
+                        }
+
+                        DropArea {
+                            id: dropArea
+                            anchors.fill: parent
+                            keys: ["history-node"]
+                            onEntered: {
+                                // 只有同层兄弟节点才能作为有效放置目标，用于调整顺序
+                                validDropTarget = (drag.source && drag.source !== delegateRoot
+                                    && drag.source.nodeId && drag.source.nodeId !== nodeId
+                                    && String(drag.source.nodeParentId || "") === String(nodeParentId || ""))
+                            }
+                            onExited: validDropTarget = false
+                            onDropped: {
+                                if (validDropTarget && drag.source && drag.source.nodeId && drag.source.nodeId !== nodeId) {
+                                    history.reorderNode(drag.source.nodeId, nodeId)
+                                }
+                                validDropTarget = false
                             }
                         }
                     }
@@ -713,35 +831,76 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 8
 
-                            // 左侧：模式下拉菜单
-                            ComboBox {
-                                id: modeCombo
-                                implicitWidth: 120
-                                implicitHeight: 32
-                                model: ["对话", "智能体", "规划"]
-                                currentIndex: {
+                            // 左侧：模式选择按钮组（图标 + 文字）
+                            Row {
+                                id: modeButtonRow
+                                spacing: 4
+
+                                readonly property var modes: ["chat", "agent", "planning"]
+                                readonly property var labels: ["对话", "智能体", "规划"]
+                                readonly property var iconNorm: ["qrc:/src/qml/icon_chat.svg", "qrc:/src/qml/icon_agent.svg", "qrc:/src/qml/icon_planning.svg"]
+                                readonly property var iconActive: ["qrc:/src/qml/icon_chat_active.svg", "qrc:/src/qml/icon_agent_active.svg", "qrc:/src/qml/icon_planning_active.svg"]
+
+                                function currentIndex() {
                                     var m = mainView.chatMode
                                     if (m === "chat") return 0
                                     if (m === "agent") return 1
                                     if (m === "planning") return 2
                                     return 0
                                 }
-                                onCurrentIndexChanged: {
-                                    var modes = ["chat", "agent", "planning"]
-                                    if (mainView.chatMode !== modes[currentIndex])
-                                        mainView.chatMode = modes[currentIndex]
-                                }
-                                contentItem: Text {
-                                    leftPadding: 10
-                                    text: modeCombo.displayText
-                                    color: cText
-                                    font.pixelSize: 12
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                background: Rectangle {
-                                    color: cInput
-                                    radius: 6
-                                    border.color: cBorder
+
+                                Repeater {
+                                    model: 3
+
+                                    Rectangle {
+                                        id: modeBtn
+                                        width: 72
+                                        height: 32
+                                        radius: 8
+                                        property bool selected: modeButtonRow.currentIndex() === index
+                                        property bool hovered: btnHover.hovered
+
+                                        color: {
+                                            if (selected) return cAccent
+                                            if (hovered) return cHighlight
+                                            return cInput
+                                        }
+                                        border.color: selected ? cAccent : (hovered ? cBorder : "transparent")
+                                        border.width: selected ? 0 : 1
+
+                                        Row {
+                                            anchors.centerIn: parent
+                                            spacing: 6
+
+                                            Image {
+                                                width: 16
+                                                height: 16
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                source: modeBtn.selected ? modeButtonRow.iconActive[index] : modeButtonRow.iconNorm[index]
+                                                fillMode: Image.PreserveAspectFit
+                                                smooth: true
+                                                mipmap: true
+                                            }
+                                            Text {
+                                                text: modeButtonRow.labels[index]
+                                                color: modeBtn.selected ? "white" : cText
+                                                font.pixelSize: 12
+                                                font.weight: modeBtn.selected ? Font.DemiBold : Font.Normal
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+                                        }
+
+                                        HoverHandler { id: btnHover }
+
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (mainView.chatMode !== modeButtonRow.modes[index])
+                                                    mainView.chatMode = modeButtonRow.modes[index]
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
@@ -936,52 +1095,185 @@ ApplicationWindow {
         }
     }
 
-    // ── 历史项右键菜单 ──────────────────────────────────────────────────────────
-    Menu {
-        id: historyItemMenu
+    // ── 历史项右键菜单（自定义漂亮样式，跟随鼠标）────────────────────────────────
+    Popup {
+        id: historyContextMenu
         property var targetNode: null
+        property var folderOptions: []
+        // 过滤后的“添加到”选项：已在根目录时隐藏“(空)”
+        property var filteredFolderOptions: {
+            var opts = historyContextMenu.folderOptions
+            var node = historyContextMenu.targetNode
+            if (!node || !opts || opts.length === 0) return []
+            var alreadyAtRoot = !node.parentId || node.parentId === ""
+            if (!alreadyAtRoot) return opts
+            var out = []
+            for (var i = 0; i < opts.length; i++) {
+                if (opts[i].id) out.push(opts[i])
+            }
+            return out
+        }
+        padding: 0
+        margins: 4
+        modal: true
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-        MenuItem {
-            text: "重命名"
-            onTriggered: {
-                if (!historyItemMenu.targetNode)
-                    return
-                var n = historyItemMenu.targetNode
-                if (n.type === "session") {
-                    if (n.id !== mainView.currentSession)
-                        mainView.loadSession(n.id)
-                    renameDialog.open()
-                } else if (n.type === "folder") {
-                    folderRenameDialog.targetId = n.id
-                    folderRenameField.text = n.name
-                    folderRenameDialog.open()
+        property real _pendingX: 0
+        property real _pendingY: 0
+
+        function openAt(px, py) {
+            if (targetNode)
+                folderOptions = history.getFolderOptions(targetNode.id)
+            _pendingX = px
+            _pendingY = py
+            x = px
+            y = py
+            open()
+        }
+
+        onOpened: {
+            x = Math.min(Math.max(6, _pendingX), appWindow.width - width - 6)
+            y = Math.min(Math.max(6, _pendingY), appWindow.height - height - 6)
+        }
+
+        background: Rectangle {
+            color: "#25272B"
+            radius: 10
+            border.width: 1
+            border.color: "#3A3D42"
+        }
+
+        contentItem: Column {
+            width: 188
+            spacing: 0
+            padding: 6
+
+            // 重命名
+            ContextMenuItem {
+                icon: "✏️"
+                label: "重命名"
+                onTriggered: {
+                    if (!historyContextMenu.targetNode) return
+                    var n = historyContextMenu.targetNode
+                    if (n.type === "session") {
+                        if (n.id !== mainView.currentSession)
+                            mainView.loadSession(n.id)
+                        renameDialog.open()
+                    } else if (n.type === "folder") {
+                        folderRenameDialog.targetId = n.id
+                        folderRenameField.text = n.name
+                        folderRenameDialog.open()
+                    }
+                    historyContextMenu.close()
+                }
+            }
+
+            // 删除
+            ContextMenuItem {
+                icon: "🗑"
+                label: "删除"
+                accent: true
+                onTriggered: {
+                    if (!historyContextMenu.targetNode) return
+                    var n = historyContextMenu.targetNode
+                    deleteNodeDialog.targetId = n.id
+                    deleteNodeDialog.targetName = n.name
+                    deleteNodeDialog.targetType = n.type
+                    deleteNodeDialog.open()
+                    historyContextMenu.close()
+                }
+            }
+
+            Rectangle {
+                width: parent.width - 12
+                height: 1
+                color: "#3A3D42"
+                visible: historyContextMenu.filteredFolderOptions.length > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            Repeater {
+                model: historyContextMenu.filteredFolderOptions
+                delegate: ContextMenuItem {
+                    icon: "📁"
+                    label: "添加到: " + modelData.name
+                    property string _folderId: modelData.id || ""
+                    onTriggered: {
+                        if (historyContextMenu.targetNode)
+                            history.moveNode(historyContextMenu.targetNode.id, _folderId)
+                        historyContextMenu.close()
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width - 12
+                height: 1
+                color: "#3A3D42"
+                visible: historyContextMenu.filteredFolderOptions.length > 0
+                anchors.horizontalCenter: parent.horizontalCenter
+            }
+
+            // 新建文件夹
+            ContextMenuItem {
+                icon: "➕"
+                label: "新建文件夹"
+                onTriggered: {
+                    if (!historyContextMenu.targetNode) return
+                    var n = historyContextMenu.targetNode
+                    var pid = n.type === "folder" ? n.id : (n.parentId || "")
+                    folderDialog.parentId = pid
+                    folderDialog.open()
+                    historyContextMenu.close()
                 }
             }
         }
+    }
 
-        MenuItem {
-            text: "删除"
-            onTriggered: {
-                if (!historyItemMenu.targetNode)
-                    return
-                history.deleteNode(historyItemMenu.targetNode.id)
+    // 可复用的菜单项组件（用 signal 避免 binding loop）
+    component ContextMenuItem: Rectangle {
+        id: ctxItem
+        width: 176
+        height: 34
+        radius: 6
+        color: ctxHover.hovered ? (ctxItem.accent ? "#4A2226" : "#36383D") : "transparent"
+
+        property string icon: "📄"
+        property string label: ""
+        property bool accent: false
+        signal triggered()
+
+        Row {
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            anchors.rightMargin: 12
+            spacing: 10
+            leftPadding: 4
+
+            Text {
+                text: ctxItem.icon
+                font.pixelSize: 14
+                color: ctxItem.accent ? "#ED4245" : cMuted
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text {
+                text: ctxItem.label
+                font.pixelSize: 13
+                color: ctxItem.accent ? "#ED4245" : cText
+                anchors.verticalCenter: parent.verticalCenter
             }
         }
 
-        MenuSeparator {}
+        HoverHandler { id: ctxHover }
 
-        MenuItem {
-            text: "新建文件夹"
-            onTriggered: {
-                if (!historyItemMenu.targetNode)
-                    return
-                var n = historyItemMenu.targetNode
-                var pid = ""
-                if (n.type === "folder")
-                    pid = n.id
-                else if (n.parentId)
-                    pid = n.parentId
-                history.createFolder("新文件夹", pid)
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            acceptedButtons: Qt.LeftButton
+            onClicked: function(mouse) {
+                if (mouse.button === Qt.LeftButton)
+                    ctxItem.triggered()
             }
         }
     }

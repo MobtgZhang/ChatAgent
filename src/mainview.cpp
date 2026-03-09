@@ -88,17 +88,8 @@ void MainView::loadSession(const QString &id) {
 }
 
 void MainView::clearMessages() {
-    if (m_activeReply) m_activeReply->abort();
-    m_messagesModel.clearAll();
-
-    QVariantMap welcome;
-    welcome["role"]      = "ai";
-    welcome["content"]   = "对话已清空。有什么可以帮助你的吗？";
-    welcome["thinking"]  = "";
-    welcome["isThinking"]= false;
-    welcome["id"]        = "welcome";
-    m_messagesModel.appendOne(welcome);
-    saveCurrentSession();
+    // 清空 = 新建对话，旧对话保留在历史中（不删除）；删除对话用历史列表右键删除
+    newSession(QString());
 }
 
 void MainView::setChatMode(const QString &mode) {
@@ -237,6 +228,25 @@ void MainView::sendMessage(const QString &text) {
     userMsg["isThinking"]= false;
     userMsg["id"]        = QString::number(QDateTime::currentMSecsSinceEpoch());
     m_messagesModel.appendOne(userMsg);
+
+    // 参考 ChatOllama/GitHub 策略：首条用户消息时立即用其内容做临时标题(≤20字)
+    int userCount = 0;
+    for (int i = 0; i < m_messagesModel.size(); ++i) {
+        if (m_messagesModel.at(i).value("role").toString() == QLatin1String("user"))
+            ++userCount;
+    }
+    if ((m_sessionName.startsWith(QStringLiteral("新标题("))
+         || m_sessionName == QStringLiteral("新标题")
+         || m_sessionName == QStringLiteral("新对话"))
+        && userCount == 1) {
+        QString tmp = text.trimmed();
+        if (tmp.length() > 20) tmp = tmp.left(20) + QStringLiteral("…");
+        if (!tmp.isEmpty()) {
+            m_sessionName = tmp;
+            m_history->renameNode(m_currentSession, m_sessionName);
+            emit sessionNameChanged();
+        }
+    }
 
     if (m_chatMode == "chat") {
         startApiCall(m_messagesModel.toVariantList());
@@ -501,25 +511,28 @@ void MainView::autoNameCurrentSession() {
 void MainView::requestSessionTitle() {
     if (m_titleReply || m_currentSession.isEmpty()) return;
 
-    // 构建对话摘要（最多取前 6 条消息，每条截断到 150 字）
-    QString dialog;
+    // 参考 ChatOllama：仅用首条用户消息+首条AI回复，缩短 payload 加速返回
+    QString userMsg, aiMsg;
     const QVariantList list = m_messagesModel.toVariantList();
-    int count = 0;
-    const int maxMsgs = 6;
-    const int maxPerMsg = 150;
     for (const QVariant &v : list) {
-        if (count >= maxMsgs) break;
         const QVariantMap m = v.toMap();
         QString role = m.value("role").toString();
         QString content = m.value("content").toString().trimmed();
         if (content.isEmpty()) continue;
-        if (content.length() > maxPerMsg)
-            content = content.left(maxPerMsg) + QStringLiteral("…");
-        QString label = (role == QLatin1String("user")) ? QStringLiteral("用户") : QStringLiteral("助手");
-        dialog += QStringLiteral("[%1] %2\n").arg(label, content);
-        ++count;
+        if (role == QLatin1String("user") && userMsg.isEmpty()) {
+            userMsg = content.length() > 80 ? content.left(80) + QStringLiteral("…") : content;
+        } else if (role == QLatin1String("ai") && aiMsg.isEmpty()) {
+            aiMsg = content.length() > 80 ? content.left(80) + QStringLiteral("…") : content;
+        }
+        if (!userMsg.isEmpty() && !aiMsg.isEmpty()) break;
     }
-    if (dialog.isEmpty()) return;
+    if (userMsg.isEmpty()) return;
+
+    QString dialog = QStringLiteral("[用户] %1\n").arg(userMsg);
+    if (!aiMsg.isEmpty())
+        dialog += QStringLiteral("[助手] %1\n").arg(aiMsg);
+
+    const QString sessionIdForTitle = m_currentSession;  // 捕获，避免用户切换会话后命名错乱
 
     QUrl apiUrl(m_settings->apiUrl());
     QString path = apiUrl.path();
@@ -537,7 +550,7 @@ void MainView::requestSessionTitle() {
     msgs.append(QJsonObject{
         {"role", "system"},
         {"content", "你是对话标题生成器。根据以下对话内容，生成一个简短有力的中文标题概括主题。"
-                    "要求：10-20个字，不要引号、句号，只输出标题本身。"}
+                    "要求：最多20个字，不要引号、句号，只输出标题本身。"}
     });
     msgs.append(QJsonObject{
         {"role", "user"},
@@ -548,7 +561,7 @@ void MainView::requestSessionTitle() {
     body["model"] = m_settings->modelName();
     body["stream"] = false;
     body["temperature"] = 0.3;
-    body["max_tokens"] = 50;
+    body["max_tokens"] = 32;
     body["messages"] = msgs;
 
     QNetworkRequest req(apiUrl);
@@ -557,7 +570,7 @@ void MainView::requestSessionTitle() {
                      ("Bearer " + m_settings->apiKey()).toUtf8());
 
     m_titleReply = m_nam->post(req, QJsonDocument(body).toJson());
-    connect(m_titleReply, &QNetworkReply::finished, this, [this]() {
+    connect(m_titleReply, &QNetworkReply::finished, this, [this, sessionIdForTitle]() {
         if (!m_titleReply) return;
         QNetworkReply *reply = m_titleReply;
         m_titleReply = nullptr;
@@ -578,13 +591,18 @@ void MainView::requestSessionTitle() {
         QString title = choices.first().toObject()["message"].toObject()["content"].toString().trimmed();
         title = title.remove(QStringLiteral("\"")).remove(QStringLiteral("「")).remove(QStringLiteral("」"));
         if (title.isEmpty()) return;
-        if (title.length() > 40)
-            title = title.left(40) + QStringLiteral("…");
+        if (title.length() > 20)
+            title = title.left(20) + QStringLiteral("…");
 
-        m_sessionName = title;
-        m_history->renameNode(m_currentSession, m_sessionName);
-        emit sessionNameChanged();
-        saveCurrentSession();
+        // 始终更新该会话的节点名称及会话文件
+        m_history->renameNode(sessionIdForTitle, title);
+        m_history->updateSessionNameInFile(sessionIdForTitle, title);
+        // 若用户仍在查看该会话，才更新当前显示的 sessionName
+        if (m_currentSession == sessionIdForTitle) {
+            m_sessionName = title;
+            emit sessionNameChanged();
+            saveCurrentSession();
+        }
     });
 }
 

@@ -8,6 +8,7 @@
 #include "history.h"
 #include "memory_module.h"
 #include "mainview.h"
+#include "clipboard_bridge.h"
 
 int main(int argc, char *argv[]) {
     QtWebEngineQuick::initialize();
@@ -29,6 +30,8 @@ int main(int argc, char *argv[]) {
     ctx->setContextProperty("settings",    &settings);
     ctx->setContextProperty("history",     &history);
     ctx->setContextProperty("mainView",    &mainView);
+    ClipboardBridge clipboardBridge;
+    ctx->setContextProperty("clipboardBridge", &clipboardBridge);
     ctx->setContextProperty("agentMemory", static_cast<QObject*>(mainView.agentMemory()));
 
     const QUrl url(QStringLiteral("qrc:/src/qml/Main.qml"));

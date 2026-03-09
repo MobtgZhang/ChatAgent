@@ -8,7 +8,7 @@ set(CMAKE_AUTORCC ON)
 
 # ── 依赖查找 ────────────────────────────────────────────────────────────────
 find_package(Qt6 REQUIRED COMPONENTS
-    Core Gui Quick QuickControls2 Network Sql WebEngineQuick
+    Core Gui Quick QuickControls2 Network Sql WebEngineQuick WebChannel
 )
 
 # ── 可执行文件 ──────────────────────────────────────────────────────────────
@@ -17,6 +17,7 @@ qt_add_executable(appAIChat
     src/about.h   src/about.cpp
     src/settings.h src/settings.cpp
     src/history.h  src/history.cpp
+    src/historylistmodel.h src/historylistmodel.cpp
     src/messagemodel.h src/messagemodel.cpp
     src/mainview.h src/mainview.cpp
     # Agent 模块
@@ -34,6 +35,7 @@ qt_add_executable(appAIChat
     src/tools/clipboard_tool.h src/tools/clipboard_tool.cpp
     src/tools/wait_tool.h src/tools/wait_tool.cpp
     src/tools/image_match_tool.h src/tools/image_match_tool.cpp
+    src/clipboard_bridge.h src/clipboard_bridge.cpp
 )
 
 # ── QML 资源打包 ─────────────────────────────────────────────────────────────
@@ -47,6 +49,14 @@ qt_add_resources(appAIChat "qml_res"
         src/qml/MarkdownRender.qml
         src/qml/MarkdownMathRender.qml
         src/qml/md_render.html
+        src/qml/copy.svg
+        src/qml/pencil.svg
+        src/qml/icon_chat.svg
+        src/qml/icon_agent.svg
+        src/qml/icon_planning.svg
+        src/qml/icon_chat_active.svg
+        src/qml/icon_agent_active.svg
+        src/qml/icon_planning_active.svg
         src/qml/Settings.qml
         src/qml/About.qml
 )
@@ -60,6 +70,7 @@ target_link_libraries(appAIChat PRIVATE
     Qt6::Network
     Qt6::Sql
     Qt6::WebEngineQuick
+    Qt6::WebChannel
 )
 
 # ── Windows 隐藏控制台窗口 ──────────────────────────────────────────────────

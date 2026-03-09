@@ -9,9 +9,55 @@
     html, body { background: transparent !important; overflow: hidden; color: #DBDEE1; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; word-wrap: break-word; }
     #content { padding: 4px; color: inherit; }
-    #content pre { background: #1e1f22; border-radius: 6px; padding: 12px; overflow-x: auto; margin: 8px 0; }
+    /* 代码块：气泡内的气泡样式 */
+    #content .code-bubble-wrapper {
+      position: relative;
+      margin: 10px 0;
+      padding: 2px;
+      background: rgba(88, 101, 242, 0.12);
+      border: 1px solid rgba(88, 101, 242, 0.25);
+      border-radius: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+    #content .code-bubble-inner {
+      background: #1a1b1e;
+      border-radius: 8px;
+      padding: 12px 44px 12px 12px;
+      overflow-x: auto;
+      border: 1px solid #2e3035;
+    }
+    #content .code-bubble-inner pre {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+    }
+    #content .code-copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 28px;
+      height: 28px;
+      border: none;
+      border-radius: 6px;
+      background: rgba(88, 101, 242, 0.2);
+      color: #B5BAC1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s, color 0.15s;
+      z-index: 2;
+    }
+    #content .code-copy-btn:hover {
+      background: rgba(88, 101, 242, 0.4);
+      color: #DBDEE1;
+    }
+    #content .code-copy-btn.copied {
+      color: #43b581;
+    }
     #content code { font-family: ui-monospace, monospace; font-size: 0.9em; }
     #content pre code { background: transparent; padding: 0; }
+    #content pre { background: #1e1f22; border-radius: 6px; padding: 12px; overflow-x: auto; margin: 8px 0; }
     #content p { margin: 6px 0; }
     #content ul, #content ol { margin: 6px 0; padding-left: 24px; }
     #content blockquote { border-left: 4px solid #5865F2; margin: 8px 0; padding-left: 16px; color: #949BA4; }
@@ -25,14 +71,145 @@
 </head>
 <body>
   <div id="content"></div>
+  <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js" crossorigin></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin></script>
   <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin></script>
   <script>
+    // 先把 LaTeX 数学块从 Markdown 文本中摘出来，避免被 marked 误处理
+    // （尤其是公式里的下划线、星号等会被当成 Markdown 语法）
+    function extractMathSegments(src) {
+      const text = src || '';
+      const segments = [];
+      let out = '';
+      let i = 0;
+      let id = 0;
+
+      function pushSegment(type, content) {
+        const token = '§§MATH_' + (id++) + '§§';
+        segments.push({ token, type, content });
+        return token;
+      }
+
+      while (i < text.length) {
+        // $$ ... $$
+        if (text[i] === '$' && text[i + 1] === '$') {
+          let j = i + 2;
+          while (j < text.length && !(text[j] === '$' && text[j + 1] === '$')) {
+            j++;
+          }
+          if (j < text.length) {
+            const content = text.slice(i, j + 2); // 保留定界符，交给 KaTeX 解析
+            out += pushSegment('block', content);
+            i = j + 2;
+            continue;
+          }
+        }
+
+        // \[ ... \]
+        if (text[i] === '\\' && text[i + 1] === '[') {
+          let j = i + 2;
+          while (j < text.length && !(text[j] === '\\' && text[j + 1] === ']')) {
+            j++;
+          }
+          if (j < text.length) {
+            const content = text.slice(i, j + 2);
+            out += pushSegment('block', content);
+            i = j + 2;
+            continue;
+          }
+        }
+
+        // $ ... $ （简单处理：不跨行，避免和普通 $ 冲突）
+        if (text[i] === '$') {
+          let j = i + 1;
+          let hasContent = false;
+          while (j < text.length && text[j] !== '\n' && text[j] !== '\r' && text[j] !== '$') {
+            if (!/\s/.test(text[j])) hasContent = true;
+            j++;
+          }
+          if (j < text.length && text[j] === '$' && hasContent) {
+            const content = text.slice(i, j + 1);
+            out += pushSegment('inline', content);
+            i = j + 1;
+            continue;
+          }
+        }
+
+        // \(...\)
+        if (text[i] === '\\' && text[i + 1] === '(') {
+          let j = i + 2;
+          while (j < text.length && !(text[j] === '\\' && text[j + 1] === ')')) {
+            j++;
+          }
+          if (j < text.length) {
+            const content = text.slice(i, j + 2);
+            out += pushSegment('inline', content);
+            i = j + 2;
+            continue;
+          }
+        }
+
+        out += text[i];
+        i++;
+      }
+
+      return { text: out, segments };
+    }
+
+    // Markdown 渲染后，把占位符替换回原来的 LaTeX 字符串，再交给 KaTeX 处理
+    function restoreMathInDom(rootEl, segments) {
+      if (!segments || !segments.length || !rootEl) return;
+      const walker = document.createTreeWalker(rootEl, NodeFilter.SHOW_TEXT, null, false);
+      const byToken = Object.create(null);
+      for (const seg of segments) byToken[seg.token] = seg.content;
+
+      const toReplace = [];
+      while (true) {
+        const node = walker.nextNode();
+        if (!node) break;
+        const text = node.nodeValue;
+        if (text && text.indexOf('§§MATH_') !== -1) {
+          toReplace.push(node);
+        }
+      }
+
+      for (const node of toReplace) {
+        let text = node.nodeValue;
+        const frag = document.createDocumentFragment();
+        let lastIndex = 0;
+        const re = /§§MATH_\d+§§/g;
+        let m;
+        while ((m = re.exec(text)) !== null) {
+          if (m.index > lastIndex) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex, m.index)));
+          }
+          const token = m[0];
+          const span = document.createElement('span');
+          span.textContent = byToken[token] || '';
+          frag.appendChild(span);
+          lastIndex = m.index + token.length;
+        }
+        if (lastIndex < text.length) {
+          frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+        }
+        node.parentNode.replaceChild(frag, node);
+      }
+    }
+
     function renderContent(md, textColor, fontSize) {
       const el = document.getElementById('content');
       if (!el) return;
-      el.innerHTML = marked.parse(md || '', { gfm: true, breaks: true });
+
+      const extracted = extractMathSegments(md || '');
+      el.innerHTML = marked.parse(extracted.text, {
+        gfm: true,
+        breaks: true
+      });
+
+      // 替换回原始的 LaTeX 文本，再由 KaTeX 解析，避免 Markdown 破坏公式
+      restoreMathInDom(el, extracted.segments);
+
       try {
         renderMathInElement(el, {
           delimiters: [
@@ -43,9 +220,74 @@
           ],
           throwOnError: false
         });
-      } catch (e) {}
+      } catch (e) {
+        // 忽略单次渲染错误，避免影响整体显示
+      }
+
       el.style.color = textColor || '#DBDEE1';
       el.style.fontSize = (fontSize || 14) + 'px';
+
+      // 为代码块添加气泡样式和复制按钮
+      enhanceCodeBlocks(el);
+    }
+
+    const copyIconSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+
+    // 初始化 Qt WebChannel（用于调用 C++ 剪贴板，WebEngine 沙箱中 clipboard API 不可用）
+    window.qtClipboard = null;
+    if (typeof qt !== 'undefined' && qt.webChannelTransport) {
+      new QWebChannel(qt.webChannelTransport, function(channel) {
+        window.qtClipboard = channel.objects.clipboard;
+      });
+    }
+
+    function copyToClipboard(text) {
+      if (window.qtClipboard && typeof window.qtClipboard.copyToClipboard === 'function') {
+        window.qtClipboard.copyToClipboard(text);
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+        return;
+      }
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } finally { ta.remove(); }
+    }
+
+    function enhanceCodeBlocks(rootEl) {
+      const pres = rootEl.querySelectorAll('pre');
+      pres.forEach(pre => {
+        if (pre.closest('.code-bubble-wrapper')) return;
+        const codeEl = pre.querySelector('code');
+        const codeText = (codeEl || pre).textContent;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'code-bubble-wrapper';
+
+        const inner = document.createElement('div');
+        inner.className = 'code-bubble-inner';
+        inner.appendChild(pre.cloneNode(true));
+
+        const btn = document.createElement('button');
+        btn.className = 'code-copy-btn';
+        btn.type = 'button';
+        btn.innerHTML = copyIconSvg;
+        btn.title = '复制';
+        btn.onclick = () => {
+          copyToClipboard(codeText);
+          btn.classList.add('copied');
+          setTimeout(() => btn.classList.remove('copied'), 800);
+        };
+
+        wrapper.appendChild(inner);
+        wrapper.appendChild(btn);
+        pre.parentNode.replaceChild(wrapper, pre);
+      });
     }
   </script>
 </body>
