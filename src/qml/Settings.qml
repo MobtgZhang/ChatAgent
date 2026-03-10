@@ -156,6 +156,7 @@ Window {
                             popup.background: Rectangle { color: cPopupBg; radius: 5; border.color: cBorder }
                             delegate: ItemDelegate {
                                 width: parent ? parent.width - 20 : 200
+                                hoverEnabled: true
                                 contentItem: Text {
                                     text: modelData
                                     color: cText
@@ -164,7 +165,7 @@ Window {
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: parent.highlighted ? cHighlight : "transparent"
+                                    color: (parent.highlighted || parent.hovered) ? cHighlight : "transparent"
                                     radius: 4
                                 }
                             }
@@ -447,6 +448,7 @@ Window {
                             popup.background: Rectangle { color: cPopupBg; radius: 5; border.color: cBorder }
                             delegate: ItemDelegate {
                                 width: parent ? parent.width - 20 : 200
+                                hoverEnabled: true
                                 contentItem: Text {
                                     text: modelData ? modelData.name : ""
                                     color: cText
@@ -455,7 +457,7 @@ Window {
                                     verticalAlignment: Text.AlignVCenter
                                 }
                                 background: Rectangle {
-                                    color: parent.highlighted ? cHighlight : "transparent"
+                                    color: (parent.highlighted || parent.hovered) ? cHighlight : "transparent"
                                     radius: 4
                                 }
                             }
