@@ -1,5 +1,6 @@
 #include "messagemodel.h"
 
+#include <QDateTime>
 #include <QMap>
 #include <functional>
 
@@ -146,8 +147,19 @@ void MessageModel::updateLastAiMessageAgent(const QString &reasoningChunk,
     if (last.value("role").toString() != QStringLiteral("ai")) return;
 
     QVariantList blocks = last.value("blocks").toList();
+    const qint64 nowMsec = QDateTime::currentMSecsSinceEpoch();
 
-    auto appendToLastBlock = [&blocks](const QString &type, const QString &chunk) {
+    auto finalizeThinkingBlock = [&blocks, nowMsec]() {
+        if (blocks.isEmpty()) return;
+        QVariantMap b = blocks.last().toMap();
+        if (b.value("type").toString() != QStringLiteral("thinking")) return;
+        qint64 start = b.value("startMsec", nowMsec).toLongLong();
+        b["durationSec"] = (nowMsec - start) / 1000.0;
+        b.remove("startMsec");
+        blocks.last() = b;
+    };
+
+    auto appendToLastBlock = [&blocks, nowMsec, &finalizeThinkingBlock](const QString &type, const QString &chunk) {
         if (chunk.isEmpty()) return;
         if (!blocks.isEmpty()) {
             QVariantMap b = blocks.last().toMap();
@@ -156,10 +168,13 @@ void MessageModel::updateLastAiMessageAgent(const QString &reasoningChunk,
                 blocks.last() = b;
                 return;
             }
+            if (type == QStringLiteral("reply")) finalizeThinkingBlock();
         }
         QVariantMap nb;
         nb["type"] = type;
         nb["content"] = chunk;
+        if (type == QStringLiteral("thinking"))
+            nb["startMsec"] = nowMsec;
         blocks.append(nb);
     };
 
@@ -168,6 +183,7 @@ void MessageModel::updateLastAiMessageAgent(const QString &reasoningChunk,
             QVariantMap b = blocks.last().toMap();
             QString t = b.value("type").toString();
             if (t == QStringLiteral("thinking")) {
+                if (!b.contains("startMsec")) b["startMsec"] = nowMsec;
                 b["content"] = b.value("content").toString() + reasoningChunk;
                 blocks.last() = b;
             } else {
@@ -192,14 +208,16 @@ void MessageModel::updateLastAiMessageAgent(const QString &reasoningChunk,
         }
     }
 
+    if (!contentChunk.isEmpty()
+        || (!isThinking && reasoningChunk.isEmpty() && contentChunk.isEmpty())) {
+        last["isThinking"] = false;
+        if (!isThinking) finalizeThinkingBlock();  // LLM 结束且最后为思考块时写入时长
+    } else {
+        last["isThinking"] = isThinking;
+    }
     last["blocks"] = blocks;
     last["thinking"] = last.value("thinking").toString() + reasoningChunk;
     last["content"] = last.value("content").toString() + contentChunk;
-    if (!contentChunk.isEmpty()
-        || (!isThinking && reasoningChunk.isEmpty() && contentChunk.isEmpty()))
-        last["isThinking"] = false;
-    else
-        last["isThinking"] = isThinking;
 
     m_items[row] = last;
     const QModelIndex idx = index(row);
@@ -208,18 +226,30 @@ void MessageModel::updateLastAiMessageAgent(const QString &reasoningChunk,
 
 void MessageModel::appendToolBlockToLastAiMessage(const QString &toolName,
                                                   const QVariantMap &args,
-                                                  const QString &result) {
+                                                  const QString &result,
+                                                  double durationSec) {
     if (m_items.isEmpty()) return;
     const int row = m_items.size() - 1;
     QVariantMap last = m_items[row];
     if (last.value("role").toString() != QStringLiteral("ai")) return;
 
     QVariantList blocks = last.value("blocks").toList();
+    const qint64 nowMsec = QDateTime::currentMSecsSinceEpoch();
+    if (!blocks.isEmpty()) {
+        QVariantMap b = blocks.last().toMap();
+        if (b.value("type").toString() == QStringLiteral("thinking")) {
+            qint64 start = b.value("startMsec", nowMsec).toLongLong();
+            b["durationSec"] = (nowMsec - start) / 1000.0;
+            b.remove("startMsec");
+            blocks.last() = b;
+        }
+    }
     QVariantMap tb;
     tb["type"] = QStringLiteral("tool");
     tb["toolName"] = toolName;
     tb["args"] = args;
     tb["result"] = result;
+    tb["durationSec"] = durationSec;
     blocks.append(tb);
     last["blocks"] = blocks;
     last["isThinking"] = true;

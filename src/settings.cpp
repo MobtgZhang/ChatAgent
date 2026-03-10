@@ -43,8 +43,8 @@ void Settings::setLanguage(const QString &v)      { if (m_language != v && !v.is
 void Settings::setCacheDirectory(const QString &v){ if (m_cacheDirectory != v) { m_cacheDirectory = v; emit cacheDirectoryChanged(); } }
 void Settings::setSearchEngine(const QString &v) {
     QString e = v.trimmed().toLower();
-    if (e != QStringLiteral("duckduckgo") && e != QStringLiteral("bing") && e != QStringLiteral("brave")
-        && e != QStringLiteral("google") && e != QStringLiteral("tencent"))
+    if (e != QStringLiteral("duckduckgo") && e != QStringLiteral("baidu") && e != QStringLiteral("bing")
+        && e != QStringLiteral("brave") && e != QStringLiteral("google") && e != QStringLiteral("tencent"))
         e = QStringLiteral("duckduckgo");
     if (m_searchEngine != e) { m_searchEngine = e; emit searchEngineChanged(); }
 }
@@ -301,8 +301,8 @@ void Settings::load() {
     if (root.contains("cacheDirectory")) m_cacheDirectory = root["cacheDirectory"].toString();
     if (root.contains("searchEngine")) {
         QString e = root["searchEngine"].toString().trimmed().toLower();
-        if (e == QStringLiteral("duckduckgo") || e == QStringLiteral("bing") || e == QStringLiteral("brave")
-            || e == QStringLiteral("google") || e == QStringLiteral("tencent"))
+        if (e == QStringLiteral("duckduckgo") || e == QStringLiteral("baidu") || e == QStringLiteral("bing")
+            || e == QStringLiteral("brave") || e == QStringLiteral("google") || e == QStringLiteral("tencent"))
             m_searchEngine = e;
     }
     if (root.contains("webSearchApiKey")) m_webSearchApiKey = root["webSearchApiKey"].toString().trimmed();

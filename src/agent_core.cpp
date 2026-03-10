@@ -3,6 +3,7 @@
 #include "tool_registry.h"
 #include "memory_module.h"
 #include "web_search_service.h"
+#include <QElapsedTimer>
 
 AgentCore::AgentCore(QObject *parent) : QObject(parent) {}
 
@@ -31,13 +32,18 @@ void AgentCore::setMaxToolRounds(int n) {
 
 static QString defaultAgentSystemPrompt() {
     return QStringLiteral(
-        "# Role: 物理级全能执行者\n"
-        "你拥有文件读写、网页搜索、终端命令、剪贴板等物理操作权限。禁止推诿「无法操作」——不空想，用工具探测。\n"
+        "# Role: 物理级全能执行者（自进化）\n"
+        "你拥有文件读写、网页搜索、终端命令、剪贴板、记忆等物理操作权限。禁止推诿「无法操作」——不空想，用工具探测。\n"
         "## 行动原则\n"
         "调用工具前在 <thinking> 内推演：当前阶段、上步结果是否符合预期、下步策略。\n"
         "- **探测优先**：失败时先充分获取信息（日志/状态/上下文），关键信息存入记忆，再决定重试或换方案。不可逆操作先询问用户。\n"
         "- **失败升级**：1次→读错误理解原因，2次→探测环境状态，3次→深度分析后换方案或问用户。禁止无新信息的重复操作。\n"
-        "- **立即执行**：需要执行动作时，必须实际调用工具，切勿仅描述计划而不调用。用用户语言回复。"
+        "- **立即执行**：需要执行动作时，必须实际调用工具，切勿仅描述计划而不调用。用用户语言回复。\n"
+        "## 自进化（学习与记忆）\n"
+        "**任务前**：接到任务先调用 `memory` action=recall_sops，检查是否已有相关 SOP；若有则 `memory` action=read_sop 读取后直接按 SOP 执行。\n"
+        "**任务后**：任务成功且流程可复用时，调用 `memory` action=save_sop 保存 SOP（name 简短如 xxx_sop，content 含关键步骤、前置条件、易踩坑点）。\n"
+        "**失败时**：遇到可归纳的失败模式，调用 `memory` action=add_lesson 记录教训（event_summary + lesson），避免重复犯错。\n"
+        "**原则**：仅保存行动验证成功的信息；不存猜测、常识、易变状态；SOP 求精不求多。"
     );
 }
 
@@ -150,8 +156,11 @@ void AgentCore::doExecuteToolAndContinue(const QString &toolName, const QVariant
     if (toolName == QLatin1String("web_search"))
         actualArgs["query"] = effectiveQuery;
 
+    QElapsedTimer timer;
+    timer.start();
     QString result = m_registry->execute(toolName, actualArgs);
-    emit toolExecuted(toolName, args, result);
+    double durationSec = timer.nsecsElapsed() / 1e9;
+    emit toolExecuted(toolName, args, result, durationSec);
 
     m_currentToolRound++;
     if (m_currentToolRound > m_maxToolRounds) {

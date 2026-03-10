@@ -172,7 +172,7 @@ private:
     QString     m_theme          = QStringLiteral("dark");   // "dark" | "light"
     QString     m_language       = QStringLiteral("en");     // "en" | "zh" | "ru" | "fr"
     QString     m_cacheDirectory;   // 空则使用默认
-    QString     m_searchEngine   = QStringLiteral("duckduckgo");  // duckduckgo | bing | brave | google | tencent
+    QString     m_searchEngine   = QStringLiteral("duckduckgo");  // duckduckgo | baidu | bing | brave | google | tencent
     QString     m_webSearchApiKey;   // Bing/Brave/Google(Serper) API Key
     QString     m_tencentSecretId;   // 腾讯联网搜索
     QString     m_tencentSecretKey;

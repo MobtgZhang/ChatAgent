@@ -18,7 +18,8 @@ struct SearchResult {
 
 /**
  * 共享联网搜索服务
- * 支持：DuckDuckGo、Bing Search、Brave Search、Google、Tencent Search
+ * 支持：DuckDuckGo、Baidu、Bing Search、Brave Search、Google、Tencent Search
+ * DuckDuckGo/Google 不可达时自动回退到百度（国内场景）
  * 供 WebSearchTool 和 MainView RAG 统一使用
  */
 class WebSearchService {

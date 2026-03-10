@@ -15,6 +15,7 @@
 #include "tools/clipboard_tool.h"
 #include "tools/wait_tool.h"
 #include "tools/image_match_tool.h"
+#include "tools/memory_tool.h"
 
 #include <QGuiApplication>
 #include <QClipboard>
@@ -136,6 +137,7 @@ void MainView::setupAgent() {
     reg->registerTool(new ClipboardTool(reg));
     reg->registerTool(new WaitTool(reg));
     reg->registerTool(new ImageMatchTool(reg));
+    reg->registerTool(new MemoryTool(m_agentMemory, reg));
 
     m_agentCore = new AgentCore(this);
     m_agentCore->setLLM(llm);
@@ -152,8 +154,8 @@ void MainView::setupAgent() {
         else
             updateLastAiMessage(reasoning, content, isThinking);
     });
-    connect(m_agentCore, &AgentCore::toolExecuted, this, [this](const QString &toolName, const QVariantMap &args, const QString &result) {
-        m_messagesModel.appendToolBlockToLastAiMessage(toolName, args, result);
+    connect(m_agentCore, &AgentCore::toolExecuted, this, [this](const QString &toolName, const QVariantMap &args, const QString &result, double durationSec) {
+        m_messagesModel.appendToolBlockToLastAiMessage(toolName, args, result, durationSec);
     });
     connect(m_agentCore, &AgentCore::finished, this, [this]() {
         setIsStreaming(false);
@@ -727,6 +729,9 @@ static QJsonObject messageToJson(const QVariantMap &m) {
                 bo["toolName"] = bm["toolName"].toString();
                 bo["result"] = bm["result"].toString();
                 bo["args"] = QJsonObject::fromVariantMap(bm["args"].toMap());
+                if (bm.contains("durationSec")) bo["durationSec"] = bm["durationSec"].toDouble();
+            } else if (bm["type"].toString() == QLatin1String("thinking") && bm.contains("durationSec")) {
+                bo["durationSec"] = bm["durationSec"].toDouble();
             }
             blocksArr.append(bo);
         }
@@ -771,6 +776,9 @@ static QVariantMap jsonToMessage(const QJsonObject &o) {
                 bm["toolName"] = bo["toolName"].toString();
                 bm["result"] = bo["result"].toString();
                 bm["args"] = bo["args"].toObject().toVariantMap();
+                if (bo.contains("durationSec")) bm["durationSec"] = bo["durationSec"].toDouble();
+            } else if (bo["type"].toString() == QLatin1String("thinking") && bo.contains("durationSec")) {
+                bm["durationSec"] = bo["durationSec"].toDouble();
             }
             blocks.append(bm);
         }
@@ -872,14 +880,17 @@ void MainView::loadSessionFile(const QString &id) {
                 QVariantMap bm;
                 bm["type"] = bo["type"].toString();
                 bm["content"] = bo["content"].toString();
-                if (bo.contains("toolName")) {
-                    bm["toolName"] = bo["toolName"].toString();
-                    bm["result"] = bo["result"].toString();
-                    bm["args"] = bo["args"].toObject().toVariantMap();
-                }
-                blocks.append(bm);
+            if (bo.contains("toolName")) {
+                bm["toolName"] = bo["toolName"].toString();
+                bm["result"] = bo["result"].toString();
+                bm["args"] = bo["args"].toObject().toVariantMap();
+                if (bo.contains("durationSec")) bm["durationSec"] = bo["durationSec"].toDouble();
+            } else if (bo["type"].toString() == QLatin1String("thinking") && bo.contains("durationSec")) {
+                bm["durationSec"] = bo["durationSec"].toDouble();
             }
-            msg["blocks"] = blocks;
+            blocks.append(bm);
+        }
+        msg["blocks"] = blocks;
         }
         if (o.contains("editHistory")) {
             QVariantList hist;

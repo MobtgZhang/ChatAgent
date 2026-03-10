@@ -10,7 +10,7 @@ WebSearchTool::WebSearchTool(Settings *settings, QObject *parent) : BaseTool(par
 }
 
 QString WebSearchTool::description() const {
-    return QStringLiteral("在网络上搜索信息。输入搜索关键词，返回相关摘要和链接。");
+    return QStringLiteral("在网络上搜索信息。输入搜索关键词，返回相关网页摘要和链接。会抓取网页正文供 LLM 综合回答。");
 }
 
 QVariantMap WebSearchTool::parametersSchema() const {
@@ -34,10 +34,25 @@ QString WebSearchTool::execute(const QVariantMap &args) {
         return r;
     }
 
-    QVector<QPair<QString, QString>> results = WebSearchService::search(query, m_settings, m_nam);
+    QString engine = m_settings ? m_settings->searchEngine().trimmed().toLower() : QStringLiteral("duckduckgo");
+    if (engine != QLatin1String("duckduckgo") && engine != QLatin1String("bing")
+        && engine != QLatin1String("brave") && engine != QLatin1String("google")
+        && engine != QLatin1String("tencent")) {
+        engine = QStringLiteral("duckduckgo");
+    }
+    QString proxyMode = m_settings ? m_settings->proxyMode().trimmed().toLower() : QStringLiteral("system");
+    QString proxyUrl = m_settings ? m_settings->proxyUrl().trimmed() : QString();
+    if (proxyMode != QLatin1String("system") && proxyMode != QLatin1String("manual"))
+        proxyMode = QStringLiteral("off");
+    QString apiKey = m_settings ? m_settings->webSearchApiKey().trimmed() : QString();
+    QString tcId = m_settings ? m_settings->tencentSecretId().trimmed() : QString();
+    QString tcKey = m_settings ? m_settings->tencentSecretKey().trimmed() : QString();
+
+    // 搜索 + 抓取网页正文（与 RAG 模式一致），供 LLM 综合回答
+    QVector<SearchResult> results = WebSearchService::searchWithContent(
+        query, engine, proxyMode, proxyUrl, m_nam, 5, apiKey, tcId, tcKey, QString());
 
     QJsonObject result;
-    QString engine = m_settings ? m_settings->searchEngine().trimmed().toLower() : QStringLiteral("duckduckgo");
     if (engine == QLatin1String("duckduckgo")) {
         result["searchUrl"] = QStringLiteral("https://html.duckduckgo.com/html/?q=%1").arg(QString::fromUtf8(QUrl::toPercentEncoding(query)));
     } else if (engine == QLatin1String("google")) {
@@ -47,22 +62,30 @@ QString WebSearchTool::execute(const QVariantMap &args) {
     }
     result["success"] = true;
 
-    QJsonArray snippets;
-    QStringList summary;
-    for (const auto &p : results) {
+    QJsonArray related;
+    QStringList contextParts;
+    for (int i = 0; i < results.size(); ++i) {
+        const SearchResult &r = results.at(i);
         QJsonObject item;
-        item["title"] = p.first;
-        item["url"] = p.second;
-        snippets.append(item);
-        summary.append(p.first);
+        item["title"] = r.title;
+        item["url"] = r.url;
+        item["snippet"] = r.snippet;
+        related.append(item);
+        QString block = QStringLiteral("[%1] %2\n%3")
+            .arg(i + 1).arg(r.title).arg(r.snippet.isEmpty() ? r.title : r.snippet);
+        contextParts << block;
     }
-    result["related"] = snippets;
+    result["related"] = related;
+    result["context"] = contextParts.join(QStringLiteral("\n\n"));  // 抓取的网页正文，供 LLM 综合回答
     if (results.isEmpty()) {
         result["abstract"] = result.contains("searchUrl")
             ? QStringLiteral("未解析到结果，请访问上方 searchUrl 手动搜索。")
             : QStringLiteral("未获取到搜索结果。");
     } else {
-        result["abstract"] = summary.join(" | ");
+        QStringList titles;
+        for (const SearchResult &r : results)
+            titles << r.title;
+        result["abstract"] = titles.join(QStringLiteral(" | "));
     }
 
     m_pendingResult = QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact));

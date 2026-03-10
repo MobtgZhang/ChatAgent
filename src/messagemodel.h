@@ -56,7 +56,8 @@ public:
                                   bool isThinking);
     void appendToolBlockToLastAiMessage(const QString &toolName,
                                        const QVariantMap &args,
-                                       const QString &result);
+                                       const QString &result,
+                                       double durationSec = 0.0);
 
     void updateLastAiMessageRagSearchStatus(const QString &status);
     void updateLastAiMessageRagLinks(const QVariantList &links);

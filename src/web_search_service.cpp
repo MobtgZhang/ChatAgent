@@ -482,6 +482,28 @@ static QVector<QPair<QString, QString>> parseDuckDuckGoHtml(const QByteArray &ht
     return out;
 }
 
+/** 百度搜索：国内可直接访问，无需代理 */
+static QVector<QPair<QString, QString>> searchBaidu(
+    const QString &query, QNetworkAccessManager *nam)
+{
+    QVector<QPair<QString, QString>> out;
+    QUrl url(QStringLiteral("https://www.baidu.com/s"));
+    QUrlQuery q;
+    q.addQueryItem(QStringLiteral("wd"), query);
+    url.setQuery(q);
+
+    QNetworkRequest req(url);
+    req.setHeader(QNetworkRequest::UserAgentHeader,
+        QStringLiteral("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"));
+    req.setRawHeader("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8");
+    req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                     QNetworkRequest::NoLessSafeRedirectPolicy);
+
+    QByteArray data = getWithTimeout(nam, req, kNetworkTimeoutMs);
+    if (data.isEmpty()) return out;
+    return parseBaiduHtml(data);
+}
+
 static QVector<QPair<QString, QString>> searchDuckDuckGo(
     const QString &query, QNetworkAccessManager *nam)
 {
@@ -730,11 +752,14 @@ static QVector<QPair<QString, QString>> searchSerperApi(
     return searchResultsToPairs(searchSerperApiWithSnippet(query, apiKey, nam));
 }
 
-/** HTML 抓取：Google、Bing（无 API Key 时回退用） */
+/** HTML 抓取：Google、Bing、Baidu（无 API Key 时回退用） */
 static QVector<QPair<QString, QString>> searchHtmlEngine(
     const QString &query, const QString &engine,
     QNetworkAccessManager *nam)
 {
+    if (engine == QLatin1String("baidu"))
+        return searchBaidu(query, nam);
+
     QUrl url;
     if (engine == QLatin1String("google")) {
         url = QUrl(QStringLiteral("https://www.google.com/search"));
@@ -785,7 +810,7 @@ QVector<QPair<QString, QString>> WebSearchService::search(
         : QStringLiteral("duckduckgo");
     if (engine != QLatin1String("duckduckgo") && engine != QLatin1String("bing")
         && engine != QLatin1String("brave") && engine != QLatin1String("google")
-        && engine != QLatin1String("tencent")) {
+        && engine != QLatin1String("tencent") && engine != QLatin1String("baidu")) {
         engine = QStringLiteral("duckduckgo");
     }
 
@@ -793,8 +818,11 @@ QVector<QPair<QString, QString>> WebSearchService::search(
     QString tcId = settings ? settings->tencentSecretId().trimmed() : QString();
     QString tcKey = settings ? settings->tencentSecretKey().trimmed() : QString();
 
-    if (engine == QLatin1String("duckduckgo")) {
+    if (engine == QLatin1String("baidu")) {
+        result = searchBaidu(focused, useNam);
+    } else if (engine == QLatin1String("duckduckgo")) {
         result = searchDuckDuckGo(focused, useNam);
+        if (result.isEmpty()) result = searchBaidu(focused, useNam);  // 国内不可达时回退到百度
     } else if (engine == QLatin1String("bing")) {
         result = !apiKey.isEmpty() ? searchResultsToPairs(searchBingApiWithSnippet(focused, apiKey, useNam)) : searchHtmlEngine(focused, QLatin1String("bing"), useNam);
     } else if (engine == QLatin1String("brave") && !apiKey.isEmpty()) {
@@ -802,7 +830,12 @@ QVector<QPair<QString, QString>> WebSearchService::search(
     } else if (engine == QLatin1String("brave")) {
         result = searchDuckDuckGo(focused, useNam);
     } else if (engine == QLatin1String("google")) {
-        result = !apiKey.isEmpty() ? searchSerperApi(focused, apiKey, useNam) : searchHtmlEngine(focused, QLatin1String("google"), useNam);
+        if (!apiKey.isEmpty()) {
+            result = searchSerperApi(focused, apiKey, useNam);
+        } else {
+            result = searchHtmlEngine(focused, QLatin1String("google"), useNam);
+            if (result.isEmpty()) result = searchBaidu(focused, useNam);  // 国内 Google 不可达时回退到百度
+        }
     } else if (engine == QLatin1String("tencent") && !tcId.isEmpty() && !tcKey.isEmpty()) {
         result = searchResultsToPairs(searchTencentApiWithSnippet(focused, tcId, tcKey, useNam));
     } else if (engine == QLatin1String("tencent")) {
@@ -838,7 +871,7 @@ QVector<QPair<QString, QString>> WebSearchService::search(
     QString e = engine.trimmed().toLower();
     if (e != QLatin1String("duckduckgo") && e != QLatin1String("bing")
         && e != QLatin1String("brave") && e != QLatin1String("google")
-        && e != QLatin1String("tencent")) {
+        && e != QLatin1String("tencent") && e != QLatin1String("baidu")) {
         e = QStringLiteral("duckduckgo");
     }
 
@@ -846,16 +879,25 @@ QVector<QPair<QString, QString>> WebSearchService::search(
     QString tcId = tencentSecretId.trimmed();
     QString tcKey = tencentSecretKey.trimmed();
 
-    if (e == QLatin1String("duckduckgo")) {
+    if (e == QLatin1String("baidu")) {
+        result = searchBaidu(focused, useNam);
+    } else if (e == QLatin1String("duckduckgo")) {
         result = searchDuckDuckGo(focused, useNam);
+        if (result.isEmpty()) result = searchBaidu(focused, useNam);
     } else if (e == QLatin1String("bing")) {
         result = !key.isEmpty() ? searchResultsToPairs(searchBingApiWithSnippet(focused, key, useNam)) : searchHtmlEngine(focused, QLatin1String("bing"), useNam);
     } else if (e == QLatin1String("brave") && !key.isEmpty()) {
         result = searchResultsToPairs(searchBraveApiWithSnippet(focused, key, useNam));
     } else if (e == QLatin1String("brave")) {
         result = searchDuckDuckGo(focused, useNam);
+        if (result.isEmpty()) result = searchBaidu(focused, useNam);
     } else if (e == QLatin1String("google")) {
-        result = !key.isEmpty() ? searchSerperApi(focused, key, useNam) : searchHtmlEngine(focused, QLatin1String("google"), useNam);
+        if (!key.isEmpty()) {
+            result = searchSerperApi(focused, key, useNam);
+        } else {
+            result = searchHtmlEngine(focused, QLatin1String("google"), useNam);
+            if (result.isEmpty()) result = searchBaidu(focused, useNam);
+        }
     } else if (e == QLatin1String("tencent") && !tcId.isEmpty() && !tcKey.isEmpty()) {
         result = searchResultsToPairs(searchTencentApiWithSnippet(focused, tcId, tcKey, useNam));
     } else if (e == QLatin1String("tencent")) {
@@ -959,9 +1001,17 @@ static QVector<SearchResult> searchOneQuery(
         out = searchTencentApiWithSnippet(subQuery, tcId, tcKey, useNam);
         hasApiSnippet = true;
     } else {
-        QVector<QPair<QString, QString>> raw = (e == QLatin1String("duckduckgo"))
-            ? searchDuckDuckGo(subQuery, useNam)
-            : searchHtmlEngine(subQuery, e == QLatin1String("bing") ? QLatin1String("bing") : QLatin1String("google"), useNam);
+        QVector<QPair<QString, QString>> raw;
+        if (e == QLatin1String("baidu")) {
+            raw = searchBaidu(subQuery, useNam);
+        } else if (e == QLatin1String("duckduckgo")) {
+            raw = searchDuckDuckGo(subQuery, useNam);
+            if (raw.isEmpty()) raw = searchBaidu(subQuery, useNam);
+        } else {
+            QString htmlEngine = (e == QLatin1String("bing")) ? QLatin1String("bing") : QLatin1String("google");
+            raw = searchHtmlEngine(subQuery, htmlEngine, useNam);
+            if (raw.isEmpty() && htmlEngine == QLatin1String("google")) raw = searchBaidu(subQuery, useNam);
+        }
         for (const auto &p : raw) {
             SearchResult sr;
             sr.title = p.first;
@@ -1009,7 +1059,7 @@ static QVector<SearchResult> searchWithSnippetsInternal(
     QString e = engine.trimmed().toLower();
     if (e != QLatin1String("duckduckgo") && e != QLatin1String("bing")
         && e != QLatin1String("brave") && e != QLatin1String("google")
-        && e != QLatin1String("tencent")) {
+        && e != QLatin1String("tencent") && e != QLatin1String("baidu")) {
         e = QStringLiteral("duckduckgo");
     }
     QString key = apiKey.trimmed();
