@@ -66,35 +66,11 @@ bool LocaleBridge::loadFromJson(const QString &langCode)
     return true;
 }
 
-static QString langCodeToName(const QString &code) {
-    static const QHash<QString, QString> names = {
-        {QStringLiteral("en"), QStringLiteral("English")},
-        {QStringLiteral("zh"), QStringLiteral("简体中文")},
-        {QStringLiteral("ru"), QStringLiteral("Русский")},
-        {QStringLiteral("fr"), QStringLiteral("Français")},
-        {QStringLiteral("de"), QStringLiteral("Deutsch")},
-        {QStringLiteral("ja"), QStringLiteral("日本語")},
-        {QStringLiteral("ko"), QStringLiteral("한국어")},
-        {QStringLiteral("es"), QStringLiteral("Español")},
-        {QStringLiteral("pt"), QStringLiteral("Português")},
-    };
-    QString n = names.value(code);
-    if (n.isEmpty())
-        n = code.left(1).toUpper() + code.mid(1);
-    return n;
-}
-
 QVariantList LocaleBridge::availableLanguageList() const
 {
     QVariantList out;
-    // 无配置文件时仅显示英语
-    if (!m_settings || !m_settings->hasConfigFile()) {
-        QVariantMap m;
-        m.insert(QStringLiteral("code"), QStringLiteral("en"));
-        m.insert(QStringLiteral("name"), QStringLiteral("English"));
-        out.append(m);
-        return out;
-    }
+    // 始终根据现有翻译文件动态生成语言列表（遵循 i18n 约定），
+    // 不再依赖 settings.json 是否存在。
     // 探测 :/src/translations/ 下的 *.json
     QDir dir(QStringLiteral(":/src/translations"));
     QStringList files = dir.entryList(QStringList{QStringLiteral("*.json")}, QDir::Files);
@@ -119,10 +95,35 @@ QVariantList LocaleBridge::availableLanguageList() const
         codes.removeAll(QStringLiteral("en"));
     codes.sort(Qt::CaseInsensitive);
     codes.prepend(QStringLiteral("en"));
+
+    // 语言显示名称：不依赖当前界面语言，而是从“各自语言”的翻译文件中读取：
+    // 对于代码 c，例如 "zh"，约定在 :/src/translations/zh.json 中有键 "languageZh"，
+    // 直接用该值作为显示名；若读取失败或键缺失，则退回为代码首字母大写形式。
     for (const QString &c : codes) {
         QVariantMap m;
         m.insert(QStringLiteral("code"), c);
-        m.insert(QStringLiteral("name"), langCodeToName(c));
+
+        QString name;
+        QString path = QStringLiteral(":/src/translations/%1.json").arg(c);
+        QFile f(path);
+        if (f.open(QIODevice::ReadOnly)) {
+            QJsonParseError err;
+            QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
+            f.close();
+            if (err.error == QJsonParseError::NoError && doc.isObject()) {
+                QJsonObject obj = doc.object();
+                name = obj.value(QStringLiteral("languageSelfName")).toString();
+                if (name.isEmpty()) {
+                    QString key = QStringLiteral("language") + c.left(1).toUpper() + c.mid(1);
+                    name = obj.value(key).toString();
+                }
+            }
+        }
+        if (name.isEmpty()) {
+            name = c.left(1).toUpper() + c.mid(1);
+        }
+
+        m.insert(QStringLiteral("name"), name);
         out.append(m);
     }
     return out;

@@ -96,6 +96,9 @@ qt_add_resources(appChatAgent "qml_res"
         src/translations/ru.json
         src/translations/fr.json
         src/translations/ja.json
+        src/translations/ko.json
+        src/translations/pt.json
+        src/translations/es.json
 )
 
 # ── 包含路径 ──────────────────────────────────────────────────────────────────

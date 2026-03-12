@@ -9,8 +9,8 @@ Window {
     id: settingsWin
     property var settings: null
     title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.settingsTitle : "Settings"
-    width: 680; height: 600
-    minimumWidth: 600; minimumHeight: 560
+    width: 680; height: 720
+    minimumWidth: 600; minimumHeight: 640
     color: (typeof settings !== "undefined" && settings.theme === "light") ? "#FAFAFA" : "#0D0D0F"
     flags: Qt.Dialog
     modality: Qt.ApplicationModal
@@ -572,10 +572,10 @@ Window {
                         }
                     }
 
-                    // 代理设置
+                    // 代理设置（不显示长说明，仅保留选项）
                     SectionBox {
                         label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.proxySettings : "Proxy"
-                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.proxyHint : ""
+                        hint:  ""
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 8
