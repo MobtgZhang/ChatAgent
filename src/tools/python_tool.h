@@ -3,6 +3,8 @@
 
 #include "base_tool.h"
 
+class Settings;
+
 /**
  * Python 执行工具
  * 支持创建独立虚拟环境、pip 安装依赖、执行代码片段和脚本文件。
@@ -19,6 +21,7 @@ class PythonTool : public BaseTool {
     Q_OBJECT
 
 public:
+    explicit PythonTool(Settings *settings, QObject *parent = nullptr);
     explicit PythonTool(QObject *parent = nullptr);
 
     QString name()             const override { return QStringLiteral("python"); }
@@ -27,7 +30,9 @@ public:
     QString execute(const QVariantMap &args) override;
 
 private:
-    // 虚拟环境根目录（AppData/agent_venv）
+    Settings *m_settings = nullptr;
+
+    // 虚拟环境根目录（数据目录/agent_venv）
     QString venvRoot() const;
 
     // venv 内 python / pip 可执行路径

@@ -26,6 +26,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QDebug>
 #include <QDateTime>
@@ -115,7 +116,7 @@ void MainView::setChatMode(const QString &mode) {
 }
 
 void MainView::setupAgent() {
-    m_agentMemory = new MemoryModule(this);
+    m_agentMemory = new MemoryModule(m_settings, this);
 
     LLMBackend *llm = new LLMBackend(this);
     m_llmBackend = llm;
@@ -128,14 +129,14 @@ void MainView::setupAgent() {
 
     ToolRegistry *reg = new ToolRegistry(this);
     m_toolRegistry = reg;
-    reg->registerTool(new FileTool(reg));
+    reg->registerTool(new FileTool(m_settings, reg));
     reg->registerTool(new ShellTool(reg));
     reg->registerTool(new WebSearchTool(m_settings, reg));
     reg->registerTool(new KeyboardTool(reg));
     reg->registerTool(new WindowTool(reg));
     reg->registerTool(new ClipboardTool(reg));
     reg->registerTool(new WaitTool(reg));
-    reg->registerTool(new PythonTool(reg));
+    reg->registerTool(new PythonTool(m_settings, reg));
     reg->registerTool(new MemoryTool(m_agentMemory, reg));
 
     m_agentCore = new AgentCore(this);
@@ -171,13 +172,57 @@ void MainView::setupAgent() {
             m_messagesModel.replaceAtRow(row, last);
         }
         m_messagesModel.appendToolBlockToLastAiMessage(toolName, args, result, durationSec);
+
+        if (m_chatMode == "agent" || m_chatMode == "planning") {
+            if (!m_messagesModel.isEmpty()) {
+                const int row = m_messagesModel.size() - 1;
+                QVariantMap last = m_messagesModel.at(row);
+                if (last.value("role").toString() == QLatin1String("ai")) {
+                    last["isThinking"] = false;
+                    m_messagesModel.replaceAtRow(row, last);
+                }
+            }
+            QVariantMap aiMsg;
+            aiMsg["role"]      = "ai";
+            aiMsg["content"]   = "";
+            aiMsg["thinking"]  = "";
+            aiMsg["isThinking"]= true;
+            aiMsg["blocks"]    = QVariantList{};
+            aiMsg["id"]        = QString::number(QDateTime::currentMSecsSinceEpoch());
+            m_messagesModel.appendOne(aiMsg);
+        }
     });
     connect(m_agentCore, &AgentCore::finished, this, [this]() {
         setIsStreaming(false);
+
+        if ((m_chatMode == "agent" || m_chatMode == "planning") && !m_messagesModel.isEmpty()) {
+            const int row = m_messagesModel.size() - 1;
+            QVariantMap last = m_messagesModel.at(row);
+            if (last.value("role").toString() == QLatin1String("ai")) {
+                const QVariantList blocks = last.value("blocks").toList();
+                bool hasContent = !last.value("content").toString().isEmpty()
+                               || !last.value("thinking").toString().isEmpty();
+                bool hasNonEmptyBlocks = false;
+                for (const QVariant &b : blocks) {
+                    const QVariantMap bm = b.toMap();
+                    if (!bm.value("content").toString().isEmpty()
+                        || bm.value("type").toString() == QLatin1String("tool")) {
+                        hasNonEmptyBlocks = true;
+                        break;
+                    }
+                }
+                if (!hasContent && !hasNonEmptyBlocks) {
+                    m_messagesModel.removeAtRow(row);
+                } else {
+                    last["isThinking"] = false;
+                    m_messagesModel.replaceAtRow(row, last);
+                }
+            }
+        }
+
         const QString sessionId = m_currentSession;
-        // 延迟执行保存等耗时操作到下一事件循环，避免阻塞 UI 主线程导致界面卡死
         QTimer::singleShot(0, this, [this, sessionId]() {
-            if (m_currentSession != sessionId) return;  // 用户已切换会话
+            if (m_currentSession != sessionId) return;
             autoNameCurrentSession();
             saveCurrentSession();
             m_history->touchSession(sessionId);
@@ -185,8 +230,18 @@ void MainView::setupAgent() {
     });
     connect(m_agentCore, &AgentCore::errorOccurred, this, &MainView::errorOccurred);
 
-    // 记忆阶段（Memory）：任务成功后自动保存 Summary 为技能时，在对话中展示提示
     connect(m_agentCore, &AgentCore::skillSaved, this, [this](const QString &title) {
+        if (m_messagesModel.isEmpty()
+            || m_messagesModel.at(m_messagesModel.size() - 1).value("role").toString() != QLatin1String("ai")) {
+            QVariantMap aiMsg;
+            aiMsg["role"]      = "ai";
+            aiMsg["content"]   = "";
+            aiMsg["thinking"]  = "";
+            aiMsg["isThinking"]= false;
+            aiMsg["blocks"]    = QVariantList{};
+            aiMsg["id"]        = QString::number(QDateTime::currentMSecsSinceEpoch());
+            m_messagesModel.appendOne(aiMsg);
+        }
         m_messagesModel.appendToolBlockToLastAiMessage(
             QStringLiteral("skill_saved"),
             {{ QStringLiteral("title"), title }},
@@ -221,6 +276,7 @@ bool MainView::exportCurrentChat(const QString &filePath) {
     out << "# " << m_sessionName << "\n\n";
 
     const QVariantList list = m_messagesModel.toVariantList();
+    int aiRoundCount = 0;
     for (const QVariant &v : list) {
         QVariantMap m = v.toMap();
         QString role = m["role"].toString();
@@ -230,19 +286,21 @@ bool MainView::exportCurrentChat(const QString &filePath) {
         if (role == "user") {
             out << "## 用户\n\n" << content << "\n\n";
         } else if (role == "ai") {
+            aiRoundCount++;
             out << "## 助手\n\n";
             QVariantList blocks = m["blocks"].toList();
             if (!blocks.isEmpty()) {
+                QString roundPrefix = QString("（智能体 第%1轮）").arg(aiRoundCount);
                 for (const QVariant &bv : blocks) {
                     QVariantMap b = bv.toMap();
                     QString t = b["type"].toString();
                     QString c = b["content"].toString();
                     if (t == "thinking" && !c.isEmpty())
-                        out << "### 思考过程\n\n" << c << "\n\n";
+                        out << "### " << roundPrefix << "思考过程\n\n" << c << "\n\n";
                     else if (t == "reply" && !c.isEmpty())
                         out << "### 回复\n\n" << c << "\n\n";
                     else if (t == "tool") {
-                        out << "### 工具: " << b["toolName"].toString() << "\n\n";
+                        out << "### " << roundPrefix << "工具: " << b["toolName"].toString() << "\n\n";
                         out << "结果:\n```\n" << b["result"].toString() << "\n```\n\n";
                     }
                 }

@@ -6,6 +6,8 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+class Settings;
+
 /**
  * Agent 记忆模块（自进化支持）
  * 短期：滚动窗口对话历史（内存）
@@ -20,6 +22,7 @@ class MemoryModule : public QObject {
     Q_PROPERTY(QVariantList longTermFacts READ longTermFacts NOTIFY longTermFactsChanged)
 
 public:
+    explicit MemoryModule(Settings *settings, QObject *parent = nullptr);
     explicit MemoryModule(QObject *parent = nullptr);
     ~MemoryModule();
 
@@ -69,6 +72,8 @@ private:
     QVariantList m_longTerm;
     QVariantList m_sopsList;
     int m_windowSize = 20;
+
+    Settings *m_settings = nullptr;
 
     struct Db;
     Db *m_db = nullptr;

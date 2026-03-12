@@ -1,4 +1,5 @@
 #include "llm_backend.h"
+#include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QJsonDocument>

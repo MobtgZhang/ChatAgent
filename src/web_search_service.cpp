@@ -1,5 +1,6 @@
 #include "web_search_service.h"
 #include "settings.h"
+#include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QNetworkProxy>

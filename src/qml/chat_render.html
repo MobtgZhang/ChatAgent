@@ -1333,6 +1333,7 @@
 
       box.innerHTML = '';
       var totalMessages = messages.length;
+      var aiRoundCount = 0;
 
       messages.forEach(function(m, idx) {
         var role = String(m.role || '').toLowerCase();
@@ -1433,6 +1434,7 @@
           }
 
         } else if (isAi) {
+          aiRoundCount++;
           var contentText = (m.content || '');
           var hasBlocks = Array.isArray(m.blocks) && m.blocks.length > 0;
           var ragStatus = (m.ragSearchStatus || '').toString();
@@ -1477,7 +1479,7 @@
                   : (isFinite(durSec) && durSec > 0 ? durSec : undefined);
 
                 bubble.appendChild(createMetaPanel(
-                  '思考过程 #' + thinkingCount, '💭', note,
+                  '（智能体 第' + aiRoundCount + '轮）思考过程', '💭', note,
                   secVal, thinkText,
                   'agent-thinking-' + msgId + '-' + blockIdx,
                   isActiveThink, tkKey, true));
@@ -1491,7 +1493,7 @@
                 var truncResult = result.length > 500 ? result.slice(0, 500) + '…' : result;
 
                 var toolPanel = createMetaPanel(
-                  '工具调用: ' + toolName, '🔧', '已完成',
+                  '（智能体 第' + aiRoundCount + '轮）工具调用: ' + toolName, '🔧', '已完成',
                   durVal, null,
                   'agent-tool-' + msgId + '-' + blockIdx,
                   false, null, true);
@@ -1533,7 +1535,7 @@
             if (m.pendingToolName) {
               var pendingKey = 'pending-tool-' + msgId;
               bubble.appendChild(createMetaPanel(
-                '工具调用: ' + m.pendingToolName, '🔧', '执行中…',
+                '（智能体 第' + aiRoundCount + '轮）工具调用: ' + m.pendingToolName, '🔧', '执行中…',
                 undefined, null,
                 'pending-tool-' + msgId,
                 true, pendingKey, true));

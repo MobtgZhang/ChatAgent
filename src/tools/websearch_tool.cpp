@@ -1,6 +1,7 @@
 #include "websearch_tool.h"
 #include "settings.h"
 #include "web_search_service.h"
+#include <QNetworkAccessManager>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -65,7 +66,7 @@ QString WebSearchTool::execute(const QVariantMap &args) {
     // 每条 snippet 截断到固定长度，保持展示一致性
     static const int kSnippetDisplayLen = 300;
     // 总 context 上限，避免 LLM 请求体过大
-    static const int kMaxContextLen = 2000;
+    static const int kMaxContextLen = 12000;
 
     QJsonArray related;
     QStringList contextParts;

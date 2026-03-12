@@ -15,10 +15,7 @@ SkillManager::SkillManager(Settings *settings, QObject *parent)
 }
 
 QString SkillManager::memoryDirPath() const {
-    QString base = m_settings->cacheDirectory().isEmpty()
-        ? m_settings->defaultCacheDirectory()
-        : m_settings->cacheDirectory();
-    return base + "/memory";
+    return m_settings->effectiveDataDirectory() + "/memory";
 }
 
 QString SkillManager::skillsFilePath() const {

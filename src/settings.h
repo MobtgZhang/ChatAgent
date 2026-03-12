@@ -4,9 +4,9 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
-#include <QNetworkAccessManager>
 
 class LocaleBridge;
+class QNetworkAccessManager;
 
 class Settings : public QObject {
     Q_OBJECT
@@ -109,8 +109,10 @@ public:
 
     // 将 file:// URL 转为本地路径（供 QML FolderDialog 使用）
     Q_INVOKABLE QString urlToLocalPath(const QString &url) const;
-    // 获取默认缓存目录
+    // 获取默认缓存目录（AppDataLocation）
     Q_INVOKABLE QString defaultCacheDirectory() const;
+    // 获取实际使用的数据目录（用户设置 > 默认），所有模块统一使用此方法
+    QString effectiveDataDirectory() const;
 
     // Model list management
     Q_INVOKABLE void addModel(const QString &model);

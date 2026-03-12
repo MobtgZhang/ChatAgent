@@ -28,11 +28,8 @@ History::History(Settings *settings, QObject *parent)
 
 // ── 路径（使用用户设置的缓存目录存储历史记录和配置）────────────────────────────
 QString History::baseDir() const {
-    if (m_settings) {
-        QString cacheDir = m_settings->cacheDirectory().trimmed();
-        if (!cacheDir.isEmpty())
-            return cacheDir;
-    }
+    if (m_settings)
+        return m_settings->effectiveDataDirectory();
     return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
 }
 

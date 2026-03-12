@@ -154,6 +154,8 @@ target_include_directories(test_history_debug PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 # ── 工具功能测试（逐个验证 FileTool / ShellTool / WaitTool / PythonTool）──────
 qt_add_executable(test_tools
     src/test/test_tools.cpp
+    src/settings.h src/settings.cpp
+    src/locale_bridge.h src/locale_bridge.cpp
     src/tools/base_tool.cpp
     src/tools/file_tool.h src/tools/file_tool.cpp
     src/tools/shell_tool.h src/tools/shell_tool.cpp
@@ -161,7 +163,7 @@ qt_add_executable(test_tools
     src/tools/python_tool.h src/tools/python_tool.cpp
 )
 target_include_directories(test_tools PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(test_tools PRIVATE Qt6::Core)
+target_link_libraries(test_tools PRIVATE Qt6::Core Qt6::Network)
 
 # ── 搜索调试 CLI（diagnose DuckDuckGo search/proxy）──────────────────────────
 qt_add_executable(test_search_cli

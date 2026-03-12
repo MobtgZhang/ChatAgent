@@ -1,4 +1,5 @@
 #include "python_tool.h"
+#include "settings.h"
 
 #include <QProcess>
 #include <QDir>
@@ -20,6 +21,9 @@ static constexpr const char *kPythonBin = "python3";
 static constexpr const char *kPipBin    = "pip3";
 static constexpr const char *kScripts   = "bin";
 #endif
+
+PythonTool::PythonTool(Settings *settings, QObject *parent)
+    : BaseTool(parent), m_settings(settings) {}
 
 PythonTool::PythonTool(QObject *parent) : BaseTool(parent) {}
 
@@ -70,7 +74,9 @@ QVariantMap PythonTool::parametersSchema() const {
 
 // ── 路径辅助 ─────────────────────────────────────────────────────────────────
 QString PythonTool::venvRoot() const {
-    QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString base = m_settings
+        ? m_settings->effectiveDataDirectory()
+        : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     return QDir(base).filePath(QStringLiteral("agent_venv"));
 }
 

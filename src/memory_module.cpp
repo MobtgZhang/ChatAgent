@@ -1,4 +1,5 @@
 #include "memory_module.h"
+#include "settings.h"
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
@@ -20,7 +21,9 @@ void MemoryModule::initDb() {
     if (m_db) return;
 
     m_db = new Db;
-    QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString path = m_settings
+        ? m_settings->effectiveDataDirectory()
+        : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(path);
     path += "/agent_memory.db";
 
@@ -39,6 +42,13 @@ void MemoryModule::initDb() {
                "id INTEGER PRIMARY KEY AUTOINCREMENT, event_summary TEXT, lesson TEXT, "
                "confidence REAL DEFAULT 0.8, created_at INTEGER)");
     }
+}
+
+MemoryModule::MemoryModule(Settings *settings, QObject *parent)
+    : QObject(parent), m_settings(settings) {
+    initDb();
+    refreshLongTerm();
+    refreshSops();
 }
 
 MemoryModule::MemoryModule(QObject *parent) : QObject(parent) {

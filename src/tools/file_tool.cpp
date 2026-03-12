@@ -1,4 +1,5 @@
 #include "file_tool.h"
+#include "settings.h"
 #include <QFile>
 #include <QDir>
 #include <QFileInfo>
@@ -8,7 +9,20 @@
 #include <QJsonDocument>
 #include <QDebug>
 
+FileTool::FileTool(Settings *settings, QObject *parent)
+    : BaseTool(parent), m_settings(settings) {}
+
 FileTool::FileTool(QObject *parent) : BaseTool(parent) {}
+
+QString FileTool::agentFilesBase() const {
+    QString base = m_settings
+        ? m_settings->effectiveDataDirectory()
+        : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir dir(base);
+    dir.mkpath(QStringLiteral("agent_files"));
+    dir.cd(QStringLiteral("agent_files"));
+    return dir.absolutePath();
+}
 
 QString FileTool::description() const {
     return QStringLiteral("读取、写入文件、列出目录或创建文件夹。支持 read/write/list/mkdir 四种操作。创建文件夹请用 mkdir，路径相对于应用数据目录下的 agent_files。");
@@ -37,17 +51,14 @@ QVariantMap FileTool::parametersSchema() const {
 }
 
 QString FileTool::safePath(const QString &path) {
-    QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir baseDir(base);
-    baseDir.mkpath("agent_files");
-    baseDir.cd("agent_files");
+    QDir baseDir(agentFilesBase());
 
     QFileInfo info(baseDir.absoluteFilePath(path));
     QString canonical = info.canonicalFilePath();
     QString baseCanonical = baseDir.canonicalPath();
 
     if (!canonical.startsWith(baseCanonical)) {
-        return QString(); // 路径逃脱，拒绝
+        return QString();
     }
     return canonical;
 }
@@ -80,11 +91,7 @@ QString FileTool::writeFile(const QString &path, const QString &content) {
 }
 
 QString FileTool::createDir(const QString &path) {
-    QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir baseDir(base);
-    baseDir.mkpath("agent_files");
-    baseDir.cd("agent_files");
-    QString canonicalBase = baseDir.canonicalPath();
+    QString canonicalBase = QDir(agentFilesBase()).canonicalPath();
 
     QString absPath = QDir(canonicalBase).absoluteFilePath(path);
     QString cleanPath = QDir::cleanPath(absPath);
@@ -100,8 +107,7 @@ QString FileTool::createDir(const QString &path) {
 }
 
 QString FileTool::listDir(const QString &path) {
-    QString safe = path.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/agent_files"
-                                  : safePath(path);
+    QString safe = path.isEmpty() ? agentFilesBase() : safePath(path);
     if (safe.isEmpty()) return QStringLiteral("{\"error\":\"路径不合法\"}");
 
     QDir dir(safe);

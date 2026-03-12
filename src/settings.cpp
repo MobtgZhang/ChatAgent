@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QDebug>
@@ -73,6 +74,15 @@ QString Settings::defaultCacheDirectory() const {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(dir);
     return dir;
+}
+
+QString Settings::effectiveDataDirectory() const {
+    QString custom = m_cacheDirectory.trimmed();
+    if (!custom.isEmpty()) {
+        QDir().mkpath(custom);
+        return custom;
+    }
+    return defaultCacheDirectory();
 }
 
 void Settings::applyLanguage(const QString &lang) {
