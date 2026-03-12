@@ -728,6 +728,63 @@
         transform: translateY(0) scale(1);
       }
     }
+
+    /* ── 用户消息编辑历史导航 ──────────────────────────────────── */
+    .edit-nav {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 3px;
+      margin-top: 5px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .edit-nav-btn {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 5px;
+      border: 1px solid var(--border-subtle);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 10px;
+      padding: 0;
+      line-height: 1;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+    .edit-nav-btn:hover:not(:disabled) {
+      background: rgba(128,128,128,0.15);
+      color: var(--text);
+      border-color: var(--border-subtle);
+    }
+    .edit-nav-btn:disabled {
+      opacity: 0.28;
+      cursor: default;
+    }
+    .edit-nav-counter {
+      padding: 0 5px;
+      user-select: none;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* ── 工具调用：参数 / 结果区块 ──────────────────────────────── */
+    .tool-section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-top: 8px;
+      margin-bottom: 3px;
+      opacity: 0.7;
+      font-weight: 600;
+    }
+    .tool-section-label:first-child {
+      margin-top: 0;
+    }
   </style>
 </head>
 <body class="theme-dark">
@@ -765,6 +822,45 @@
     const panelCollapsedState = {};
     // 记住上一次渲染的消息快照，避免 300ms 轮询时整块重复重绘导致“闪烁感”
     let lastMessagesKey = "";
+
+    // ── 计算消息编辑历史的 DFS 版本位置 ──────────────────────────────────────
+    // 输入：editHistory 数组（每项含 content / parentIndex）、currentEditIndex（flat 索引）
+    // 返回：{ version, total, prevPos, nextPos }，position 均为 0-based DFS 序
+    function computeEditVersion(editHistory, currentEditIndex) {
+      if (!Array.isArray(editHistory) || editHistory.length === 0)
+        return { version: 1, total: 1, prevPos: -1, nextPos: -1 };
+
+      var parentToChildren = {};
+      for (var i = 0; i < editHistory.length; i++) {
+        var node = editHistory[i] || {};
+        var p = (node.parentIndex !== undefined && node.parentIndex !== null)
+                ? node.parentIndex : -1;
+        if (!parentToChildren[p]) parentToChildren[p] = [];
+        parentToChildren[p].push(i);
+      }
+
+      var dfsOrder = [];
+      function dfsWalk(parentIdx) {
+        var children = parentToChildren[parentIdx] || [];
+        for (var j = 0; j < children.length; j++) {
+          dfsOrder.push(children[j]);
+          dfsWalk(children[j]);
+        }
+      }
+      dfsWalk(-1);
+
+      var cur = (currentEditIndex !== undefined && currentEditIndex !== null)
+                ? currentEditIndex : 0;
+      var pos = dfsOrder.indexOf(Number(cur));
+      if (pos === -1) pos = 0;
+
+      return {
+        version: pos + 1,
+        total:   dfsOrder.length,
+        prevPos: pos > 0 ? pos - 1 : -1,
+        nextPos: pos < dfsOrder.length - 1 ? pos + 1 : -1
+      };
+    }
 
     // ============ Markdown + KaTeX 渲染工具（从 md_render.html 精简移植） ============
     function extractMathSegments(src) {
@@ -1123,7 +1219,9 @@
       }
     }
 
-    function createMetaPanel(title, emoji, pillText, seconds, markdown, collapsibleKey, isActive, timerKey) {
+    // defaultCollapsed：面板的默认折叠状态（仅在用户尚未手动展开/收起时生效）
+    // 活跃中的面板（isActive=true）始终展开，不受 defaultCollapsed 影响
+    function createMetaPanel(title, emoji, pillText, seconds, markdown, collapsibleKey, isActive, timerKey, defaultCollapsed) {
       const panel = document.createElement('div');
       panel.className = 'meta-panel';
 
@@ -1187,7 +1285,14 @@
       panel.appendChild(header);
       panel.appendChild(body);
 
-      if (collapsibleKey && panelCollapsedState[collapsibleKey]) {
+      // 确定是否折叠：优先使用用户明确操作的状态，否则用 defaultCollapsed（活跃时不折叠）
+      var effectiveDefault = isActive ? false : !!defaultCollapsed;
+      var shouldCollapse = collapsibleKey
+        ? (panelCollapsedState.hasOwnProperty(collapsibleKey)
+            ? panelCollapsedState[collapsibleKey]
+            : effectiveDefault)
+        : false;
+      if (shouldCollapse) {
         panel.classList.add('collapsed');
         toggle.textContent = '▶';
       }
@@ -1284,6 +1389,49 @@
           actions.appendChild(regenBtn);
           bubble.appendChild(actions);
 
+          // ── 编辑历史版本导航（◀ X/Y ▶）──────────────────────────────────
+          var editHistory = Array.isArray(m.editHistory) ? m.editHistory : [];
+          var editInfo = computeEditVersion(editHistory, m.currentEditIndex);
+          if (editInfo.total > 1) {
+            var navDiv = document.createElement('div');
+            navDiv.className = 'edit-nav';
+
+            var prevBtn = document.createElement('button');
+            prevBtn.className = 'edit-nav-btn';
+            prevBtn.textContent = '◀';
+            prevBtn.title = '上一版本';
+            prevBtn.disabled = editInfo.prevPos === -1;
+            prevBtn.onclick = (function(msgIdx, pos) {
+              return function() {
+                if (qtMainView && typeof qtMainView.setUserMessageVersion === 'function')
+                  qtMainView.setUserMessageVersion(msgIdx, pos);
+                lastMessagesKey = '';
+              };
+            })(idx, editInfo.prevPos);
+
+            var counter = document.createElement('span');
+            counter.className = 'edit-nav-counter';
+            counter.textContent = editInfo.version + ' / ' + editInfo.total;
+
+            var nextBtn = document.createElement('button');
+            nextBtn.className = 'edit-nav-btn';
+            nextBtn.textContent = '▶';
+            nextBtn.title = '下一版本';
+            nextBtn.disabled = editInfo.nextPos === -1;
+            nextBtn.onclick = (function(msgIdx, pos) {
+              return function() {
+                if (qtMainView && typeof qtMainView.setUserMessageVersion === 'function')
+                  qtMainView.setUserMessageVersion(msgIdx, pos);
+                lastMessagesKey = '';
+              };
+            })(idx, editInfo.nextPos);
+
+            navDiv.appendChild(prevBtn);
+            navDiv.appendChild(counter);
+            navDiv.appendChild(nextBtn);
+            bubble.appendChild(navDiv);
+          }
+
         } else if (isAi) {
           var contentText = (m.content || '');
           var hasBlocks = Array.isArray(m.blocks) && m.blocks.length > 0;
@@ -1295,21 +1443,21 @@
           if (ragStatus === 'rewriting' || (rewriteThinking && !ragStatus)) {
             var tKey = 'rewrite-' + msgId;
             bubble.appendChild(createMetaPanel('查询重写', '🔁', '重写中',
-              undefined, rewriteThinking, 'rewrite-' + msgId, true, tKey));
+              undefined, rewriteThinking, 'rewrite-' + msgId, true, tKey, true));
           } else if ((ragStatus === 'searching' || ragStatus === 'done') && rewriteThinking) {
             var sec = isFinite(rewriteMs) && rewriteMs > 0 ? (rewriteMs / 1000.0) : undefined;
             bubble.appendChild(createMetaPanel('查询重写', '🔁', '已重写', sec, rewriteThinking,
-              'rewrite-' + msgId, false, 'rewrite-' + msgId));
+              'rewrite-' + msgId, false, 'rewrite-' + msgId, true));
           }
 
           if (ragStatus === 'searching') {
             var tKey = 'search-' + msgId;
             bubble.appendChild(createMetaPanel('联网检索', '🌐', '查询中',
-              undefined, buildRagLinksSummary(m.ragLinks), 'search-' + msgId, true, tKey));
+              undefined, buildRagLinksSummary(m.ragLinks), 'search-' + msgId, true, tKey, true));
           } else if (ragStatus === 'done') {
             var sec = isFinite(searchMs) && searchMs > 0 ? (searchMs / 1000.0) : undefined;
             bubble.appendChild(createMetaPanel('联网检索', '🌐', '查询完成', sec,
-              buildRagLinksSummary(m.ragLinks), 'search-' + msgId, false, 'search-' + msgId));
+              buildRagLinksSummary(m.ragLinks), 'search-' + msgId, false, 'search-' + msgId, true));
           }
 
           if (hasBlocks) {
@@ -1332,26 +1480,48 @@
                   '思考过程 #' + thinkingCount, '💭', note,
                   secVal, thinkText,
                   'agent-thinking-' + msgId + '-' + blockIdx,
-                  isActiveThink, tkKey));
+                  isActiveThink, tkKey, true));
 
               } else if (b.type === 'tool') {
                 var toolName = b.toolName || 'tool';
+                var toolArgs = b.args || {};
                 var result = (b.result || '').toString();
                 var durSec = Number(b.durationSec);
                 var durVal = isFinite(durSec) && durSec > 0 ? durSec : undefined;
-                var truncResult = result.length > 300 ? result.slice(0, 300) + '…' : result;
+                var truncResult = result.length > 500 ? result.slice(0, 500) + '…' : result;
 
                 var toolPanel = createMetaPanel(
                   '工具调用: ' + toolName, '🔧', '已完成',
                   durVal, null,
                   'agent-tool-' + msgId + '-' + blockIdx,
-                  false, null);
+                  false, null, true);
                 var toolBody = toolPanel.querySelector('.meta-panel-body');
-                if (toolBody && truncResult) {
-                  var resultDiv = document.createElement('div');
-                  resultDiv.className = 'tool-panel-result';
-                  resultDiv.textContent = truncResult;
-                  toolBody.appendChild(resultDiv);
+                if (toolBody) {
+                  // 调用参数
+                  var hasArgs = toolArgs && typeof toolArgs === 'object'
+                                && Object.keys(toolArgs).length > 0;
+                  if (hasArgs) {
+                    var argsLabel = document.createElement('div');
+                    argsLabel.className = 'tool-section-label';
+                    argsLabel.textContent = '调用参数';
+                    toolBody.appendChild(argsLabel);
+                    var argsDiv = document.createElement('div');
+                    argsDiv.className = 'tool-panel-result';
+                    try { argsDiv.textContent = JSON.stringify(toolArgs, null, 2); }
+                    catch(e) { argsDiv.textContent = String(toolArgs); }
+                    toolBody.appendChild(argsDiv);
+                  }
+                  // 执行结果
+                  if (truncResult) {
+                    var resLabel = document.createElement('div');
+                    resLabel.className = 'tool-section-label';
+                    resLabel.textContent = '执行结果';
+                    toolBody.appendChild(resLabel);
+                    var resultDiv = document.createElement('div');
+                    resultDiv.className = 'tool-panel-result';
+                    resultDiv.textContent = truncResult;
+                    toolBody.appendChild(resultDiv);
+                  }
                 }
                 bubble.appendChild(toolPanel);
 
@@ -1366,7 +1536,7 @@
                 '工具调用: ' + m.pendingToolName, '🔧', '执行中…',
                 undefined, null,
                 'pending-tool-' + msgId,
-                true, pendingKey));
+                true, pendingKey, true));
             }
 
             var replyText = replyParts.join('');
@@ -1391,7 +1561,7 @@
               bubble.appendChild(createMetaPanel('思考过程', '💭', note,
                 undefined, thinkText,
                 'thinking-' + msgId,
-                isStreaming, tkKey));
+                isStreaming, tkKey, true));
             }
 
             if (contentText && contentText.trim()) {

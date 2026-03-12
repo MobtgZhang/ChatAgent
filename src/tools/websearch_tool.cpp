@@ -48,9 +48,9 @@ QString WebSearchTool::execute(const QVariantMap &args) {
     QString tcId = m_settings ? m_settings->tencentSecretId().trimmed() : QString();
     QString tcKey = m_settings ? m_settings->tencentSecretKey().trimmed() : QString();
 
-    // 搜索 + 抓取网页正文（与 RAG 模式一致），供 LLM 综合回答
+    // 搜索 + 抓取网页正文，供 LLM 综合回答；限制 3 条结果防止上下文过大
     QVector<SearchResult> results = WebSearchService::searchWithContent(
-        query, engine, proxyMode, proxyUrl, m_nam, 5, apiKey, tcId, tcKey, QString());
+        query, engine, proxyMode, proxyUrl, m_nam, 3, apiKey, tcId, tcKey, QString());
 
     QJsonObject result;
     if (engine == QLatin1String("duckduckgo")) {
@@ -76,7 +76,11 @@ QString WebSearchTool::execute(const QVariantMap &args) {
         contextParts << block;
     }
     result["related"] = related;
-    result["context"] = contextParts.join(QStringLiteral("\n\n"));  // 抓取的网页正文，供 LLM 综合回答
+    // 限制总 context 大小，防止 LLM 请求体过大导致 API 返回 500
+    QString ctx = contextParts.join(QStringLiteral("\n\n"));
+    if (ctx.length() > 2500)
+        ctx = ctx.left(2500) + QStringLiteral("…");
+    result["context"] = ctx;
     if (results.isEmpty()) {
         result["abstract"] = result.contains("searchUrl")
             ? QStringLiteral("未解析到结果，请访问上方 searchUrl 手动搜索。")

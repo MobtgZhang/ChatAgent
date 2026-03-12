@@ -385,7 +385,33 @@ void MessageModel::appendEditHistoryNode(int row, const QString &newContent, int
 }
 
 void MessageModel::persistCurrentBranchTails() {
-    // branchTails 在 saveCurrentSession 中内联计算并序列化，此处保留空实现以兼容 API
+    // 遍历所有用户消息，将当前可见 tail 写回对应分支的 branchTails 条目，
+    // 保证 saveCurrentSession 序列化时每个分支的后续对话都是最新的。
+    for (int row = 0; row < m_items.size(); ++row) {
+        QVariantMap msg = m_items[row];
+        if (msg.value("role").toString() != QStringLiteral("user")) continue;
+        if (!msg.contains("editHistory")) continue;
+
+        QVariantList history = msg.value("editHistory").toList();
+        QVariantList branchTails = msg.value("branchTails").toList();
+        QList<int> dfsOrder = depthFirstOrder(history);
+        if (dfsOrder.isEmpty()) continue;
+
+        const int currentFlatIdx = msg.value("currentEditIndex", 0).toInt();
+        const int currentDfsPos = dfsOrder.indexOf(currentFlatIdx);
+        if (currentDfsPos < 0) continue;
+
+        QVariantList currentTail;
+        for (int i = row + 1; i < m_items.size(); ++i)
+            currentTail.append(m_items.at(i));
+
+        while (branchTails.size() <= currentDfsPos)
+            branchTails.append(QVariantList());
+        branchTails[currentDfsPos] = currentTail;
+
+        msg["branchTails"] = branchTails;
+        m_items[row] = msg;
+    }
 }
 
 void MessageModel::setUserMessageEditIndex(int row, int dfsPosition) {
@@ -398,9 +424,22 @@ void MessageModel::setUserMessageEditIndex(int row, int dfsPosition) {
     QList<int> dfsOrder = depthFirstOrder(history);
     if (dfsPosition < 0 || dfsPosition >= dfsOrder.size()) return;
 
+    // 切换前将当前可见的 tail 保存回对应分支，防止切换后再切回时消息丢失
+    const int currentFlatIdx = msg.value("currentEditIndex", 0).toInt();
+    const int currentDfsPos = dfsOrder.indexOf(currentFlatIdx);
+    if (currentDfsPos >= 0) {
+        QVariantList currentTail;
+        for (int i = row + 1; i < m_items.size(); ++i)
+            currentTail.append(m_items.at(i));
+        while (branchTails.size() <= currentDfsPos)
+            branchTails.append(QVariantList());
+        branchTails[currentDfsPos] = currentTail;
+    }
+
     const int flatIdx = dfsOrder.at(dfsPosition);
     msg["currentEditIndex"] = flatIdx;
     msg["content"] = history.at(flatIdx).toMap().value("content").toString();
+    msg["branchTails"] = branchTails;
     m_items[row] = msg;
 
     // 根据 branchTails 恢复对应历史分支的后续消息

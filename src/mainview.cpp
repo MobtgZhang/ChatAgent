@@ -10,11 +10,10 @@
 #include "tools/shell_tool.h"
 #include "tools/websearch_tool.h"
 #include "tools/keyboard_tool.h"
-#include "tools/ocr_tool.h"
 #include "tools/window_tool.h"
 #include "tools/clipboard_tool.h"
 #include "tools/wait_tool.h"
-#include "tools/image_match_tool.h"
+#include "tools/python_tool.h"
 #include "tools/memory_tool.h"
 
 #include <QGuiApplication>
@@ -132,11 +131,10 @@ void MainView::setupAgent() {
     reg->registerTool(new ShellTool(reg));
     reg->registerTool(new WebSearchTool(m_settings, reg));
     reg->registerTool(new KeyboardTool(reg));
-    reg->registerTool(new OcrTool(reg));
     reg->registerTool(new WindowTool(reg));
     reg->registerTool(new ClipboardTool(reg));
     reg->registerTool(new WaitTool(reg));
-    reg->registerTool(new ImageMatchTool(reg));
+    reg->registerTool(new PythonTool(reg));
     reg->registerTool(new MemoryTool(m_agentMemory, reg));
 
     m_agentCore = new AgentCore(this);
@@ -863,6 +861,9 @@ static QVariantMap jsonToMessage(const QJsonObject &o) {
 
 void MainView::saveCurrentSession() {
     if (m_currentSession.isEmpty()) return;
+
+    // 保存前先将当前可见 tail 写回各分支的 branchTails，避免历史版本切换后消息丢失
+    m_messagesModel.persistCurrentBranchTails();
 
     QJsonArray arr;
     const QVariantList list = m_messagesModel.toVariantList();

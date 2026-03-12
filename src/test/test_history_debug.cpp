@@ -73,6 +73,22 @@ static void runTests() {
     model3.persistCurrentBranchTails();
     qDebug() << "branchTails 长度:" << model3.at(0)["branchTails"].toList().size();
 
+    qDebug() << "\n=== 测试 4: 多次编辑分支导航 ===";
+    MessageModel model4;
+    model4.appendOne(makeUserMsg("v1"));
+    model4.appendOne(makeAiMsg("r1"));
+    model4.appendEditHistoryNode(0, "v2", -1);
+    model4.appendOne(makeAiMsg("r2"));
+    model4.appendEditHistoryNode(0, "v3", -1);
+    model4.appendOne(makeAiMsg("r3"));
+    qDebug() << "三个版本后 size:" << model4.size();
+    // 切回第一个版本
+    model4.setUserMessageEditIndex(0, 0);
+    qDebug() << "切到版本1 content:" << model4.at(0)["content"].toString() << "期望 v1";
+    // 切到第二个版本
+    model4.setUserMessageEditIndex(0, 1);
+    qDebug() << "切到版本2 content:" << model4.at(0)["content"].toString() << "期望 v2";
+
     qDebug() << "\n=== 所有测试完成 ===";
     QCoreApplication::quit();
 }

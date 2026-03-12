@@ -32,11 +32,10 @@ qt_add_executable(appChatAgent
     src/tools/shell_tool.h src/tools/shell_tool.cpp
     src/tools/websearch_tool.h src/tools/websearch_tool.cpp
     src/tools/keyboard_tool.h src/tools/keyboard_tool.cpp
-    src/tools/ocr_tool.h src/tools/ocr_tool.cpp
     src/tools/window_tool.h src/tools/window_tool.cpp
     src/tools/clipboard_tool.h src/tools/clipboard_tool.cpp
     src/tools/wait_tool.h src/tools/wait_tool.cpp
-    src/tools/image_match_tool.h src/tools/image_match_tool.cpp
+    src/tools/python_tool.h src/tools/python_tool.cpp
     src/tools/memory_tool.h src/tools/memory_tool.cpp
     src/clipboard_bridge.h src/clipboard_bridge.cpp
     src/skill_manager.h src/skill_manager.cpp
@@ -146,17 +145,29 @@ endif()
 
 # ── 历史消息调试（验证 editHistory/branchTails 逻辑）──────────────────────────
 qt_add_executable(test_history_debug
-    src/test_history_debug.cpp
+    src/test/test_history_debug.cpp
     src/messagemodel.cpp
 )
 target_link_libraries(test_history_debug PRIVATE Qt6::Core)
 target_include_directories(test_history_debug PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
+# ── 工具功能测试（逐个验证 FileTool / ShellTool / WaitTool / PythonTool）──────
+qt_add_executable(test_tools
+    src/test/test_tools.cpp
+    src/tools/base_tool.cpp
+    src/tools/file_tool.h src/tools/file_tool.cpp
+    src/tools/shell_tool.h src/tools/shell_tool.cpp
+    src/tools/wait_tool.h src/tools/wait_tool.cpp
+    src/tools/python_tool.h src/tools/python_tool.cpp
+)
+target_include_directories(test_tools PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(test_tools PRIVATE Qt6::Core)
+
 # ── 搜索调试 CLI（diagnose DuckDuckGo search/proxy）──────────────────────────
-qt_add_executable(search_debug_cli
-    src/tools/search_debug_cli.cpp
+qt_add_executable(test_search_cli
+    src/test/test_search_cli.cpp
     src/web_search_service.cpp
 )
-target_include_directories(search_debug_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(search_debug_cli PRIVATE Qt6::Core Qt6::Network)
+target_include_directories(test_search_cli PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(test_search_cli PRIVATE Qt6::Core Qt6::Network)
 
