@@ -30,13 +30,21 @@ ApplicationWindow {
     readonly property color cScrollBarHover: isLight ? "#94A3B8" : "#64748B"
     readonly property color cPopupBg: isLight ? "#FFFFFF" : "#1E293B"
 
+    // 左侧历史记录区高度（拖动分隔栏可调；允许为 0 以实现“折叠”效果）
+    property real sidebarHistoryHeight: 260
+
+    // 让拖动高度变化更“丝滑”：带速度的平滑动画（不会一帧一跳）
+    Behavior on sidebarHistoryHeight {
+        SmoothedAnimation {
+            velocity: 1800
+            easing.type: Easing.OutCubic
+        }
+    }
+
     // 关闭主窗口时直接退出应用，避免进程在后台残留
     onClosing: {
         Qt.quit()
     }
-
-    // ── 技能面板展开状态 ──────────────────────────────────────────────────────
-    property bool skillsExpanded: true
 
     // ── 弹窗（懒创建）────────────────────────────────────────────────────────
     property var settingsWin: null
@@ -148,8 +156,14 @@ ApplicationWindow {
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: "#ED4245" }
                 onClicked: {
-                    if (deleteNodeDialog.targetId !== "")
+                    if (deleteNodeDialog.targetId !== "") {
+                        var isCurrentSession = deleteNodeDialog.targetType === "session" && deleteNodeDialog.targetId === mainView.currentSession
                         history.deleteNode(deleteNodeDialog.targetId)
+                        // 如果删除的是当前选中的会话，删除后创建新对话并清空聊天记录
+                        if (isCurrentSession) {
+                            mainView.newSession()
+                        }
+                    }
                     deleteNodeDialog.close()
                 }
             }
@@ -400,30 +414,71 @@ ApplicationWindow {
                     }
                 }
 
-                // ── 历史树列表（可上下滚动）────────────────────────────────────
-                ListView {
-                    id: historyList
+                // 分隔线
+                Rectangle { Layout.fillWidth: true; height: 1; color: cDivider }
+
+                // ── 历史树列表（可拖动分割线调整高度）───────────────────────────
+                ColumnLayout {
+                    id: historyColumn
                     Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    Layout.minimumHeight: 80
-                    clip: true
-                    model: history.flatModel
-                    spacing: 1
-                    ScrollBar.vertical: ScrollBar {
-                        policy: ScrollBar.AsNeeded
-                        contentItem: Rectangle {
-                            implicitWidth: 6
-                            radius: 3
-                            color: parent.pressed ? cScrollBarHover : (parent.hovered ? cScrollBarHover : cScrollBar)
-                        }
-                        background: Rectangle {
-                            implicitWidth: 6
-                            color: cDivider
-                            radius: 3
+                    Layout.preferredHeight: sidebarHistoryHeight
+                    Layout.minimumHeight: 0
+                    spacing: 0
+
+                    // 历史记录标题栏
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 36
+                        color: "transparent"
+
+                        RowLayout {
+                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                            spacing: 6
+
+                            Text {
+                                text: "📜 " + ((localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.history) ? localeBridge.t.history : "历史记录")
+                                color: cText
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+                            Item { Layout.fillWidth: true }
+                            Rectangle {
+                                width: 22; height: 18; radius: 9
+                                color: cAccent
+                                visible: history && history.flatModel && history.flatModel.count > 0
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: history && history.flatModel ? history.flatModel.count : "0"
+                                    color: "white"
+                                    font.pixelSize: 10
+                                    font.bold: true
+                                }
+                            }
                         }
                     }
 
-                    delegate: Item {
+                    ListView {
+                        id: historyList
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        model: history.flatModel
+                        spacing: 1
+                        ScrollBar.vertical: ScrollBar {
+                            policy: ScrollBar.AsNeeded
+                            contentItem: Rectangle {
+                                implicitWidth: 6
+                                radius: 3
+                                color: parent.pressed ? cScrollBarHover : (parent.hovered ? cScrollBarHover : cScrollBar)
+                            }
+                            background: Rectangle {
+                                implicitWidth: 6
+                                color: cDivider
+                                radius: 3
+                            }
+                        }
+
+                        delegate: Item {
                         id: delegateRoot
                         width: historyList.width
                         height: 36
@@ -576,14 +631,70 @@ ApplicationWindow {
                         }
                     }
                 }
+                }  // 关闭历史记录ColumnLayout
 
-                Rectangle { Layout.fillWidth: true; height: 1; color: cDivider }
-
-                // ── 智能体技能面板（可折叠，滑动浏览）─────────────────────────────
-                ColumnLayout {
+                // 可拖动分隔栏
+                Rectangle {
+                    id: skillsSplitter
                     Layout.fillWidth: true
+                    height: 14
+                    color: "transparent"
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 40
+                        height: 4
+                        radius: 2
+                        color: splitterHover.containsMouse ? cAccent : cMuted
+                    }
+
+                    // 只负责提供“↑↓”光标（DragHandler 本身不控制 cursorShape）
+                    MouseArea {
+                        id: splitterHover
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                        cursorShape: Qt.SizeVerCursor
+                    }
+
+                    // 用 DragHandler 替代 MouseArea：更丝滑，且拖动过程中不易“丢失”鼠标
+                    DragHandler {
+                        id: splitterDrag
+                        target: null
+                        yAxis.enabled: true
+                        xAxis.enabled: false
+                        grabPermissions: PointerHandler.CanTakeOverFromAnything
+
+                        property real startHistoryHeight: 0
+
+                        onActiveChanged: {
+                            if (active) startHistoryHeight = sidebarHistoryHeight
+                        }
+
+                        onTranslationChanged: {
+                            if (!active) return
+
+                            var delta = translation.y
+                            // 允许拖到 0 形成“折叠”效果；上限需要给技能区与底部按钮留空间
+                            var parentH = historyColumn.parent.height
+                            var minSkills = skillsColumn.Layout.minimumHeight
+                            var minBottom = bottomButtons.implicitHeight
+                            var maxHistory = Math.max(0, parentH - minSkills - skillsSplitter.height - minBottom)
+
+                            sidebarHistoryHeight = Math.max(0, Math.min(maxHistory, startHistoryHeight + delta))
+                        }
+                    }
+                }
+
+                // ── 技能面板（可拖动分隔调整高度）─────────────────────────────
+                ColumnLayout {
+                    id: skillsColumn
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumHeight: 0
                     spacing: 0
 
+                    // 技能标题栏
                     Rectangle {
                         Layout.fillWidth: true
                         height: 36
@@ -593,11 +704,6 @@ ApplicationWindow {
                             anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                             spacing: 6
 
-                            Text {
-                                text: skillsExpanded ? "▼" : "▶"
-                                color: cMuted
-                                font.pixelSize: 10
-                            }
                             Text {
                                 text: "🛠 " + ((localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.skills) ? localeBridge.t.skills : "Skills")
                                 color: cText
@@ -617,59 +723,23 @@ ApplicationWindow {
                                     font.bold: true
                                 }
                             }
-                            // 导入技能按钮（打开 .md 文件）
-                            Rectangle {
-                                width: 22; height: 22; radius: 5
-                                color: addSkillBtnHover.hovered ? cAccent : "transparent"
-                                border.color: addSkillBtnHover.hovered ? cAccent : cBorder
-                                border.width: 1
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "+"
-                                    color: addSkillBtnHover.hovered ? "white" : cMuted
-                                    font.pixelSize: 14
-                                    font.bold: true
-                                }
-                                HoverHandler { id: addSkillBtnHover }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: importSkillFileDialog.open()
-                                }
-                                ToolTip.text: "导入 .md 技能文件"
-                                ToolTip.visible: addSkillBtnHover.hovered
-                                ToolTip.delay: 400
-                            }
-                        }
-
-                        HoverHandler { id: skillHeaderHover }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: skillsExpanded = !skillsExpanded
                         }
                     }
 
                     ListView {
                         id: skillsListView
                         Layout.fillWidth: true
-                        Layout.preferredHeight: skillsExpanded ? Math.min(contentHeight, 200) : 0
-                        Layout.maximumHeight: 200
-                        visible: skillsExpanded
+                        Layout.fillHeight: true
                         clip: true
                         spacing: 4
                         model: (typeof skillManager !== "undefined" && skillManager) ? skillManager.skills : []
 
-                        Behavior on Layout.preferredHeight {
-                            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-                        }
-
                         ScrollBar.vertical: ScrollBar {
                             policy: ScrollBar.AsNeeded
                             contentItem: Rectangle {
-                                implicitWidth: 4
-                                radius: 2
-                                color: parent.pressed ? cScrollBarHover : (parent.hovered ? cScrollBarHover : cScrollBar)
+                                implicitWidth: 6
+                                radius: 3
+                                color: parent.pressed ? cAccent : (parent.hovered ? cAccent : cMuted)
                             }
                         }
 
@@ -749,34 +819,103 @@ ApplicationWindow {
                 }
 
                 // ── 底部按钮 ──────────────────────────────────────────────────
-                Column {
+                RowLayout {
+                    id: bottomButtons
                     Layout.fillWidth: true
                     Layout.bottomMargin: 8
-                    spacing: 2
-                    padding: 8
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 6
 
-                    Repeater {
-                        model: [
-                            { icon: "⚙️", key: "settings", action: "settings" },
-                            { icon: "ℹ️", key: "about", action: "about" }
-                        ]
-                        delegate: Rectangle {
-                            width: parent.width - 16; height: 36; radius: 5
-                            color: sideHover.hovered ? cHighlight : "transparent"
-                            Row {
-                                anchors { left: parent.left; verticalCenter: parent.verticalCenter; leftMargin: 10 }
-                                spacing: 10
-                                Text { text: modelData.icon;  color: cMuted; font.pixelSize: 15 }
-                                Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t[modelData.key]) ? localeBridge.t[modelData.key] : modelData.key; color: cText;  font.pixelSize: 12 }
+                    // 新建技能按钮
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 36
+                        radius: 5
+                        color: newSkillBtnHover.hovered ? cAccent : cDivider
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text { text: "➕"; color: newSkillBtnHover.hovered ? "white" : cMuted; font.pixelSize: 12 }
+                            Text { text: "新建技能"; color: newSkillBtnHover.hovered ? "white" : cText; font.pixelSize: 12 }
+                        }
+                        HoverHandler { id: newSkillBtnHover }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                editSkillDialog.targetId = ""
+                                editSkillDialog.isNewMode = true
+                                editSkillIconField.text = "🔧"
+                                editSkillTitleField.text = ""
+                                editSkillContentArea.text = ""
+                                editSkillDialog.open()
                             }
-                            HoverHandler { id: sideHover }
-                            MouseArea {
-                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    if (modelData.action === "settings") openSettings()
-                                    else openAbout()
-                                }
-                            }
+                        }
+                    }
+
+                    // 加载技能按钮
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 36
+                        radius: 5
+                        color: loadSkillBtnHover.hovered ? cAccent : cDivider
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text { text: "📂"; color: loadSkillBtnHover.hovered ? "white" : cMuted; font.pixelSize: 12 }
+                            Text { text: "新建文件夹"; color: loadSkillBtnHover.hovered ? "white" : cText; font.pixelSize: 12 }
+                        }
+                        HoverHandler { id: loadSkillBtnHover }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: importSkillDialog.openForLoad()
+                        }
+                    }
+                }
+
+                // 设置和关于按钮
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 8
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 6
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 36
+                        radius: 5
+                        color: settingsHover.hovered ? cHighlight : "transparent"
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text { text: "⚙️"; color: cMuted; font.pixelSize: 13 }
+                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.settings) ? localeBridge.t.settings : "设置"; color: cText; font.pixelSize: 12 }
+                        }
+                        HoverHandler { id: settingsHover }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: openSettings()
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        height: 36
+                        radius: 5
+                        color: aboutHover.hovered ? cHighlight : "transparent"
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 6
+                            Text { text: "ℹ️"; color: cMuted; font.pixelSize: 13 }
+                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.about) ? localeBridge.t.about : "关于"; color: cText; font.pixelSize: 12 }
+                        }
+                        HoverHandler { id: aboutHover }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: openAbout()
                         }
                     }
                 }
@@ -1684,7 +1823,12 @@ ApplicationWindow {
         width: 480
         height: 400
 
+        // 不要在 contentItem 里 anchors.fill（会覆盖 header 区域导致重叠）
+        padding: 20
+        topPadding: 12
+
         property string targetId: ""
+        property bool isNewMode: false
 
         background: Rectangle { color: cPopupBg; radius: 12; border.color: cBorder; border.width: 1 }
 
@@ -1723,7 +1867,7 @@ ApplicationWindow {
 
         contentItem: ColumnLayout {
             spacing: 14
-            anchors { fill: parent; margins: 20; topMargin: 12 }
+            Layout.fillWidth: true
 
             RowLayout {
                 Layout.fillWidth: true
@@ -1808,9 +1952,12 @@ ApplicationWindow {
                     var title   = editSkillTitleField.text.trim()
                     var content = editSkillContentArea.text.trim()
                     if (title.length > 0 && content.length > 0
-                            && editSkillDialog.targetId !== ""
                             && typeof skillManager !== "undefined" && skillManager) {
-                        skillManager.updateSkill(editSkillDialog.targetId, title, content)
+                        if (editSkillDialog.isNewMode) {
+                            skillManager.addSkill(title, content, editSkillIconField.text || "🔧", "custom")
+                        } else if (editSkillDialog.targetId !== "") {
+                            skillManager.updateSkill(editSkillDialog.targetId, title, content)
+                        }
                         editSkillDialog.close()
                     }
                 }
