@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/Main.qml</file>
+        <file>qml/Settings.qml</file>
+        <file>qml/About.qml</file>
+        <file>qml/chat_render.html</file>
+    </qresource>
+</RCC>
