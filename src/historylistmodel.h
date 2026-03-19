@@ -7,6 +7,7 @@
 // 用于 QML ListView 的历史树扁平列表模型，确保正确触发视图更新
 class HistoryListModel : public QAbstractListModel {
     Q_OBJECT
+    Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
 
 public:
     enum Role {
@@ -28,6 +29,9 @@ public:
     QHash<int, QByteArray> roleNames() const override;
 
     void setFlatNodes(const QVariantList &nodes);
+
+signals:
+    void countChanged();
 
 private:
     QVariantList m_nodes;

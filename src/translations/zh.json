@@ -134,5 +134,21 @@
   "modelsErrorInvalid": "刷新失败：API 地址无效",
   "modelsErrorPrefix": "刷新失败：",
   "modelsErrorNoData": "刷新失败：返回中没有模型数据",
-  "modelsSuccessFormat": "刷新成功，共加载 %1 个模型"
+  "modelsSuccessFormat": "刷新成功，共加载 %1 个模型",
+  "history": "历史记录",
+  "skills": "技能",
+  "newSkill": "新建技能",
+  "newFolderBtn": "新建文件夹",
+  "editSkill": "编辑技能",
+  "deleteSkill": "删除技能",
+  "deleteSkillConfirm": "确定要删除技能「%1」吗？此操作无法撤销。",
+  "skillName": "技能名称",
+  "skillNamePlaceholder": "技能名称…",
+  "skillContent": "技能内容",
+  "skillContentPlaceholder": "技能描述 / SOP 内容…",
+  "skillIcon": "图标",
+  "edit": "编辑",
+  "selectSkillFile": "选择技能文件 (.md)",
+  "markdownFiles": "Markdown 文件 (*.md)",
+  "allFiles": "所有文件 (*)"
 }

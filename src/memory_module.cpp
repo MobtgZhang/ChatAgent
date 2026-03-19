@@ -21,11 +21,18 @@ void MemoryModule::initDb() {
     if (m_db) return;
 
     m_db = new Db;
-    QString path = m_settings
+    QString basePath = m_settings
         ? m_settings->effectiveDataDirectory()
         : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    QDir().mkpath(path);
-    path += "/agent_memory.db";
+
+    QString memoryDir = basePath + "/memory";
+    QDir().mkpath(memoryDir);
+
+    // 兼容旧版：若旧路径存在数据库则自动迁移
+    QString oldPath = basePath + "/agent_memory.db";
+    QString path = memoryDir + "/agent_memory.db";
+    if (QFile::exists(oldPath) && !QFile::exists(path))
+        QFile::copy(oldPath, path);
 
     m_db->db = QSqlDatabase::addDatabase("QSQLITE", "agent_memory");
     m_db->db.setDatabaseName(path);

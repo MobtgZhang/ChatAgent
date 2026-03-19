@@ -134,5 +134,21 @@
   "modelsErrorInvalid": "Falha: URL da API inválida",
   "modelsErrorPrefix": "Falha: ",
   "modelsErrorNoData": "Falha: resposta sem dados de modelos",
-  "modelsSuccessFormat": "Sucesso: %1 modelos carregados"
+  "modelsSuccessFormat": "Sucesso: %1 modelos carregados",
+  "history": "Histórico",
+  "skills": "Habilidades",
+  "newSkill": "Nova Habilidade",
+  "newFolderBtn": "Nova Pasta",
+  "editSkill": "Editar Habilidade",
+  "deleteSkill": "Excluir Habilidade",
+  "deleteSkillConfirm": "Tem certeza que deseja excluir a habilidade \"%1\"? Esta ação não pode ser desfeita.",
+  "skillName": "Nome da Habilidade",
+  "skillNamePlaceholder": "Nome da habilidade…",
+  "skillContent": "Conteúdo da Habilidade",
+  "skillContentPlaceholder": "Descrição da habilidade / conteúdo SOP…",
+  "skillIcon": "Ícone",
+  "edit": "Editar",
+  "selectSkillFile": "Selecionar arquivo de habilidade (.md)",
+  "markdownFiles": "Arquivos Markdown (*.md)",
+  "allFiles": "Todos os Arquivos (*)"
 }

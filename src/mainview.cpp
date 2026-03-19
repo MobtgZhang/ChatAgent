@@ -777,8 +777,10 @@ void MainView::doStartApiCall(const QString &ragContext) {
         if (reply->error() != QNetworkReply::NoError
             && reply->error() != QNetworkReply::OperationCanceledError) {
             qWarning() << "API Error:" << reply->errorString();
-            updateLastAiMessage("",
-                "\n\n> **[错误]** " + reply->errorString(), false);
+            if (reply->isOpen()) {
+                updateLastAiMessage("",
+                    "\n\n> **[错误]** " + reply->errorString(), false);
+            }
             emit errorOccurred(reply->errorString());
         }
         setIsStreaming(false);
@@ -1186,6 +1188,11 @@ void MainView::requestSessionTitle() {
 
         if (reply->error() != QNetworkReply::NoError
             && reply->error() != QNetworkReply::OperationCanceledError) {
+            reply->deleteLater();
+            return;
+        }
+
+        if (!reply->isOpen()) {
             reply->deleteLater();
             return;
         }

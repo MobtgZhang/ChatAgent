@@ -21,6 +21,7 @@ History::History(QObject *parent) : QObject(parent), m_flatModel(new HistoryList
 
 History::History(Settings *settings, QObject *parent)
     : QObject(parent), m_settings(settings), m_flatModel(new HistoryListModel(this)) {
+    migrateOldData();
     QDir().mkpath(dataDir());
     loadIndex();
     rebuildFlat();
@@ -28,9 +29,10 @@ History::History(Settings *settings, QObject *parent)
 
 // ── 路径（使用用户设置的缓存目录存储历史记录和配置）────────────────────────────
 QString History::baseDir() const {
-    if (m_settings)
-        return m_settings->effectiveDataDirectory();
-    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString root = m_settings
+        ? m_settings->effectiveDataDirectory()
+        : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    return root + "/history";
 }
 
 QString History::dataDir() const {
@@ -38,7 +40,7 @@ QString History::dataDir() const {
 }
 
 QString History::indexPath() const {
-    return baseDir() + "/history_index.json";
+    return baseDir() + "/index.json";
 }
 
 QString History::sessionFilePath(const QString &id) const {
@@ -363,5 +365,35 @@ QString History::firstSessionId() const {
     for (const HistoryNode &n : m_nodes)
         if (n.type == "session") return n.id;
     return QString();
+}
+
+// ── 从旧路径迁移数据 ──────────────────────────────────────────────────────────
+void History::migrateOldData() {
+    QString root = m_settings
+        ? m_settings->effectiveDataDirectory()
+        : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+
+    QString oldIndex = root + "/history_index.json";
+    QString oldSessions = root + "/sessions";
+    QString newBase = baseDir();
+    QString newIndex = indexPath();
+    QString newSessions = dataDir();
+
+    if (!QFile::exists(oldIndex))
+        return;
+    if (QFile::exists(newIndex))
+        return;
+
+    QDir().mkpath(newBase);
+    QDir().mkpath(newSessions);
+
+    QFile::copy(oldIndex, newIndex);
+
+    QDir oldDir(oldSessions);
+    if (oldDir.exists()) {
+        const QStringList files = oldDir.entryList(QDir::Files);
+        for (const QString &f : files)
+            QFile::copy(oldSessions + "/" + f, newSessions + "/" + f);
+    }
 }
 

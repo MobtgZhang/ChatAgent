@@ -73,6 +73,7 @@ private:
     void loadIndex();
     void saveIndex();
     void rebuildFlat();          // 重建扁平列表
+    void migrateOldData();       // 从旧路径迁移数据
 
     // DFS 辅助：递归添加子节点到 flat list
     void appendChildren(const QString &parentId, int depth,

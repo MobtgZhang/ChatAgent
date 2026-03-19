@@ -134,5 +134,21 @@
   "modelsErrorInvalid": "실패: 잘못된 API URL",
   "modelsErrorPrefix": "실패: ",
   "modelsErrorNoData": "실패: 응답에 모델 데이터가 없습니다",
-  "modelsSuccessFormat": "성공: %1개 모델을 불러왔습니다"
+  "modelsSuccessFormat": "성공: %1개 모델을 불러왔습니다",
+  "history": "기록",
+  "skills": "스킬",
+  "newSkill": "새 스킬",
+  "newFolderBtn": "새 폴더",
+  "editSkill": "스킬 편집",
+  "deleteSkill": "스킬 삭제",
+  "deleteSkillConfirm": "스킬 \"%1\"을(를) 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.",
+  "skillName": "스킬 이름",
+  "skillNamePlaceholder": "스킬 이름…",
+  "skillContent": "스킬 내용",
+  "skillContentPlaceholder": "스킬 설명 / SOP 내용…",
+  "skillIcon": "아이콘",
+  "edit": "편집",
+  "selectSkillFile": "스킬 파일 선택 (.md)",
+  "markdownFiles": "Markdown 파일 (*.md)",
+  "allFiles": "모든 파일 (*)"
 }

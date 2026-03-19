@@ -133,5 +133,21 @@
   "modelsErrorInvalid": "Ошибка: неверный URL API",
   "modelsErrorPrefix": "Ошибка: ",
   "modelsErrorNoData": "Ошибка: нет данных моделей",
-  "modelsSuccessFormat": "Успешно: загружено %1 моделей"
+  "modelsSuccessFormat": "Успешно: загружено %1 моделей",
+  "history": "История",
+  "skills": "Навыки",
+  "newSkill": "Новый навык",
+  "newFolderBtn": "Новая папка",
+  "editSkill": "Редактировать навык",
+  "deleteSkill": "Удалить навык",
+  "deleteSkillConfirm": "Вы уверены что хотите удалить навык «%1»? Это действие нельзя отменить.",
+  "skillName": "Название навыка",
+  "skillNamePlaceholder": "Название навыка…",
+  "skillContent": "Содержание навыка",
+  "skillContentPlaceholder": "Описание навыка / содержание SOP…",
+  "skillIcon": "Иконка",
+  "edit": "Редактировать",
+  "selectSkillFile": "Выберите файл навыка (.md)",
+  "markdownFiles": "Файлы Markdown (*.md)",
+  "allFiles": "Все файлы (*)"
 }

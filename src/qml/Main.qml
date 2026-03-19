@@ -341,12 +341,19 @@ ApplicationWindow {
 
         // ═══════════════════════════ 左侧：侧边栏 ════════════════════════════
         Rectangle {
-            Layout.preferredWidth: 248
+            Layout.preferredWidth: 260
             Layout.fillHeight: true
             color: cSidebar
 
+            // 侧边栏右侧分隔线
+            Rectangle {
+                anchors { top: parent.top; bottom: parent.bottom; right: parent.right }
+                width: 1; color: cDivider
+            }
+
             ColumnLayout {
                 anchors.fill: parent
+                anchors.rightMargin: 1
                 spacing: 0
 
                 // App 标题
@@ -354,16 +361,20 @@ ApplicationWindow {
                     Layout.fillWidth: true; height: 58
                     color: "transparent"
                     RowLayout {
-                        anchors { fill: parent; leftMargin: 14; rightMargin: 14 }
+                        anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
                         spacing: 10
                         Rectangle {
-                            width: 32; height: 32; radius: 8; color: "#F9A825"
+                            width: 34; height: 34; radius: 10
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: isLight ? "#6366F1" : "#818CF8" }
+                                GradientStop { position: 1.0; color: isLight ? "#4F46E5" : "#6366F1" }
+                            }
                             Text { anchors.centerIn: parent; text: "💬"; font.pixelSize: 18 }
                         }
                         Column {
-                            spacing: 1; Layout.fillWidth: true
-                            Text { text: "ChatAgent"; color: cText; font.bold: true; font.pixelSize: 15 }
-                            Text { text: "Community Edition"; color: cMuted; font.pixelSize: 10 }
+                            spacing: 2; Layout.fillWidth: true
+                            Text { text: "ChatAgent"; color: cText; font.bold: true; font.pixelSize: 16; font.letterSpacing: 0.3 }
+                            Text { text: "v1.3.0"; color: cMuted; font.pixelSize: 10 }
                         }
                     }
                     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: cDivider }
@@ -371,21 +382,25 @@ ApplicationWindow {
 
                 // 新建按钮行
                 Rectangle {
-                    Layout.fillWidth: true; height: 42
+                    Layout.fillWidth: true; height: 48
                     color: "transparent"
 
                     RowLayout {
-                        anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                        spacing: 6
+                        anchors { fill: parent; leftMargin: 12; rightMargin: 12; topMargin: 6; bottomMargin: 6 }
+                        spacing: 8
 
                         // 新对话
                         Rectangle {
-                            Layout.fillWidth: true; height: 30; radius: 5
-                            color: newChatHover.hovered ? cHighlight : cDivider
+                            Layout.fillWidth: true; height: 34; radius: 8
+                            color: newChatHover.hovered ? cAccent : (isLight ? "#E8ECF0" : "#273045")
+                            Behavior on color { ColorAnimation { duration: 150 } }
                             Row {
                                 anchors.centerIn: parent; spacing: 6
                                 Text { text: "✏️"; font.pixelSize: 13 }
-                                Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.newChat : "New Chat"; color: cText; font.pixelSize: 12 }
+                                Text {
+                                    text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.newChat : "New Chat"
+                                    color: newChatHover.hovered ? "white" : cText; font.pixelSize: 12; font.weight: Font.Medium
+                                }
                             }
                             HoverHandler { id: newChatHover }
                             MouseArea {
@@ -396,9 +411,13 @@ ApplicationWindow {
 
                         // 新建文件夹
                         Rectangle {
-                            width: 30; height: 30; radius: 5
-                            color: folderHover.hovered ? cHighlight : cDivider
-                            Text { anchors.centerIn: parent; text: "📁"; font.pixelSize: 15 }
+                            width: 34; height: 34; radius: 8
+                            color: folderHover.hovered ? cAccent : (isLight ? "#E8ECF0" : "#273045")
+                            Behavior on color { ColorAnimation { duration: 150 } }
+                            Text {
+                                anchors.centerIn: parent; text: "📁"; font.pixelSize: 15
+                                color: folderHover.hovered ? "white" : cText
+                            }
                             ToolTip.text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.newFolderInMenu : "New Folder"
                             ToolTip.visible: folderHover.hovered
                             ToolTip.delay: 600
@@ -448,7 +467,7 @@ ApplicationWindow {
                                 visible: history && history.flatModel && history.flatModel.count > 0
                                 Text {
                                     anchors.centerIn: parent
-                                    text: history && history.flatModel ? history.flatModel.count : "0"
+                                    text: (history && history.flatModel) ? String(history.flatModel.count) : "0"
                                     color: "white"
                                     font.pixelSize: 10
                                     font.bold: true
@@ -463,28 +482,41 @@ ApplicationWindow {
                         Layout.fillHeight: true
                         clip: true
                         model: history.flatModel
-                        spacing: 1
+                        spacing: 2
+                        cacheBuffer: 400
                         ScrollBar.vertical: ScrollBar {
                             policy: ScrollBar.AsNeeded
                             contentItem: Rectangle {
-                                implicitWidth: 6
-                                radius: 3
+                                implicitWidth: 5
+                                radius: 2.5
                                 color: parent.pressed ? cScrollBarHover : (parent.hovered ? cScrollBarHover : cScrollBar)
+                                Behavior on color { ColorAnimation { duration: 150 } }
                             }
                             background: Rectangle {
-                                implicitWidth: 6
-                                color: cDivider
-                                radius: 3
+                                implicitWidth: 5
+                                color: "transparent"
+                                radius: 2.5
+                            }
+                        }
+
+                        property real savedContentY: 0
+                        Connections {
+                            target: history.flatModel
+                            function onModelAboutToBeReset() {
+                                historyList.savedContentY = historyList.contentY
+                            }
+                            function onModelReset() {
+                                historyList.contentY = Math.min(historyList.savedContentY, Math.max(0, historyList.contentHeight - historyList.height))
                             }
                         }
 
                         delegate: Item {
                         id: delegateRoot
                         width: historyList.width
-                        height: 36
+                        height: 38
 
-                        property bool held: false  // 长按后为 true，用于启动拖拽
-                        property bool validDropTarget: false  // 拖拽悬停时，是否为有效放置目标（同层兄弟）
+                        property bool held: false
+                        property bool validDropTarget: false
 
                         readonly property string nodeId:   model.nodeId || ""
                         readonly property string nodeType: model.nodeType || ""
@@ -505,38 +537,61 @@ ApplicationWindow {
                         Rectangle {
                             id: rowRect
                             anchors { fill: parent; leftMargin: 6; rightMargin: 6 }
-                            radius: 5
+                            radius: 7
                             color: {
-                                if (dropArea.containsDrag && validDropTarget) return cAccent + "40"
+                                if (dropArea.containsDrag && validDropTarget) return cAccent + "30"
                                 if (isCurrent) return cSelectedBg
                                 if (itemHover.hovered) return cHighlight
                                 return "transparent"
                             }
-                            opacity: Drag.active ? 0.6 : 1.0
+                            border.width: isCurrent ? 1 : 0
+                            border.color: isCurrent ? (isLight ? "#C7D2FE" : "#4338CA") : "transparent"
+                            opacity: held ? 0.6 : 1.0
+                            Behavior on color { ColorAnimation { duration: 120 } }
 
                             RowLayout {
-                                anchors { fill: parent; leftMargin: nodeDepth * 14 + 8; rightMargin: 8 }
-                                spacing: 6
+                                anchors { fill: parent; leftMargin: nodeDepth * 16 + 10; rightMargin: 8 }
+                                spacing: 7
 
-                                // 拖拽手柄（长按后拖动可调整上下顺序）
+                                // 层级连接线
+                                Rectangle {
+                                    visible: nodeDepth > 0
+                                    width: 1; height: parent.height
+                                    color: cDivider
+                                    opacity: 0.5
+                                    Layout.alignment: Qt.AlignLeft
+                                    Layout.leftMargin: -nodeDepth * 16 + 2
+                                }
+
+                                // 拖拽手柄
                                 Text {
-                                    text: "⋮⋮"
-                                    font.pixelSize: 12
+                                    text: "⋮"
+                                    font.pixelSize: 11
                                     color: cMuted
-                                    opacity: itemHover.hovered ? 1 : (isLight ? 0.7 : 0.4)
-                                    Layout.preferredWidth: 16
+                                    opacity: itemHover.hovered ? 0.8 : 0.3
+                                    Layout.preferredWidth: 10
                                     horizontalAlignment: Text.AlignHCenter
+                                    Behavior on opacity { NumberAnimation { duration: 150 } }
                                     MouseArea {
                                         id: dragHandle
                                         anchors.fill: parent
                                         cursorShape: held ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                                        pressAndHoldInterval: 400  // 长按 400ms 后启动拖拽
+                                        pressAndHoldInterval: 400
                                         drag.target: held ? rowRect : undefined
                                         drag.axis: Drag.YAxis
                                         drag.smoothed: false
                                         onPressAndHold: delegateRoot.held = true
                                         onReleased: delegateRoot.held = false
                                     }
+                                }
+
+                                // 文件夹展开/折叠按钮
+                                Text {
+                                    visible: isFolder
+                                    text: nodeExpanded ? "▾" : "▸"
+                                    font.pixelSize: 10
+                                    color: cMuted
+                                    Layout.preferredWidth: isFolder ? 10 : 0
                                 }
 
                                 Text {
@@ -549,17 +604,20 @@ ApplicationWindow {
                                 Text {
                                     Layout.fillWidth: true
                                     text: nodeName
-                                    color: isCurrent ? (isLight ? cText : "white") : cText
-                                    font.pixelSize: 12; font.bold: isCurrent
+                                    color: isCurrent ? (isLight ? "#4338CA" : "#A5B4FC") : cText
+                                    font.pixelSize: 12
+                                    font.weight: isCurrent ? Font.DemiBold : Font.Normal
                                     elide: Text.ElideRight
                                 }
 
                                 Row {
                                     spacing: 2
-                                    visible: itemHover.hovered
+                                    visible: itemHover.hovered && !held
+                                    opacity: itemHover.hovered ? 1 : 0
+                                    Behavior on opacity { NumberAnimation { duration: 120 } }
 
                                     Text {
-                                        text: "🗑"; font.pixelSize: 12
+                                        text: "🗑"; font.pixelSize: 11
                                         color: delHover.hovered ? "#ED4245" : cMuted
                                         HoverHandler { id: delHover }
                                         MouseArea {
@@ -599,7 +657,7 @@ ApplicationWindow {
 
                             MouseArea {
                                 id: mainClickArea
-                                anchors { fill: parent; leftMargin: nodeDepth * 14 + 8 + 16 + 6 }
+                                anchors { fill: parent; leftMargin: nodeDepth * 16 + 10 + 10 + 7 }
                                 cursorShape: Qt.PointingHandCursor
                                 acceptedButtons: Qt.LeftButton
                                 onClicked: {
@@ -616,7 +674,6 @@ ApplicationWindow {
                             anchors.fill: parent
                             keys: ["history-node"]
                             onEntered: {
-                                // 只有同层兄弟节点才能作为有效放置目标，用于调整顺序
                                 validDropTarget = (drag.source && drag.source !== delegateRoot
                                     && drag.source.nodeId && drag.source.nodeId !== nodeId
                                     && String(drag.source.nodeParentId || "") === String(nodeParentId || ""))
@@ -747,21 +804,26 @@ ApplicationWindow {
                             id: skillCard
                             width: skillsListView.width - 16
                             x: 8
-                            height: 56
-                            radius: 8
-                            color: skillCardHover.hovered ? cHighlight : (isLight ? "#F1F5F9" : "#1E293B")
-                            border.color: skillCardHover.hovered ? cAccent : cBorder
-                            border.width: skillCardHover.hovered ? 1 : 0
+                            height: 60
+                            radius: 10
+                            color: skillCardHover.hovered ? (isLight ? "#EEF2FF" : "#2A2F4A") : (isLight ? "#F8FAFC" : "#1A2035")
+                            border.color: skillCardHover.hovered ? cAccent : (isLight ? "#E8ECF0" : "#2A3040")
+                            border.width: 1
+                            Behavior on color { ColorAnimation { duration: 150 } }
+                            Behavior on border.color { ColorAnimation { duration: 150 } }
 
                             property string skillId: modelData.id || ""
 
                             RowLayout {
-                                anchors { fill: parent; margins: 8 }
-                                spacing: 8
+                                anchors { fill: parent; margins: 10 }
+                                spacing: 10
 
                                 Rectangle {
-                                    width: 36; height: 36; radius: 8
-                                    color: isLight ? "#EEF2FF" : "#312E81"
+                                    width: 38; height: 38; radius: 10
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: isLight ? "#EEF2FF" : "#312E81" }
+                                        GradientStop { position: 1.0; color: isLight ? "#E0E7FF" : "#3B3591" }
+                                    }
                                     Text {
                                         anchors.centerIn: parent
                                         text: modelData.icon || "🔧"
@@ -771,7 +833,7 @@ ApplicationWindow {
 
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    spacing: 2
+                                    spacing: 3
                                     Text {
                                         text: modelData.title || ""
                                         color: cText
@@ -782,7 +844,7 @@ ApplicationWindow {
                                     }
                                     Text {
                                         property string ct: modelData.content ? String(modelData.content) : ""
-                                        text: ct.length > 30 ? ct.substring(0, 30) + "…" : ct
+                                        text: ct.length > 35 ? ct.substring(0, 35) + "…" : ct
                                         color: cMuted
                                         font.pixelSize: 10
                                         elide: Text.ElideRight
@@ -837,7 +899,10 @@ ApplicationWindow {
                             anchors.centerIn: parent
                             spacing: 6
                             Text { text: "➕"; color: newSkillBtnHover.hovered ? "white" : cMuted; font.pixelSize: 12 }
-                            Text { text: "新建技能"; color: newSkillBtnHover.hovered ? "white" : cText; font.pixelSize: 12 }
+                            Text {
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.newSkill) ? localeBridge.t.newSkill : "New Skill"
+                                color: newSkillBtnHover.hovered ? "white" : cText; font.pixelSize: 12
+                            }
                         }
                         HoverHandler { id: newSkillBtnHover }
                         MouseArea {
@@ -854,7 +919,7 @@ ApplicationWindow {
                         }
                     }
 
-                    // 加载技能按钮
+                    // 导入技能按钮
                     Rectangle {
                         Layout.fillWidth: true
                         height: 36
@@ -863,36 +928,47 @@ ApplicationWindow {
                         Row {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: "📂"; color: loadSkillBtnHover.hovered ? "white" : cMuted; font.pixelSize: 12 }
-                            Text { text: "新建文件夹"; color: loadSkillBtnHover.hovered ? "white" : cText; font.pixelSize: 12 }
+                            Text { text: "📄"; color: loadSkillBtnHover.hovered ? "white" : cMuted; font.pixelSize: 12 }
+                            Text {
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.export) ? localeBridge.t.export : "Import"
+                                color: loadSkillBtnHover.hovered ? "white" : cText; font.pixelSize: 12
+                            }
                         }
                         HoverHandler { id: loadSkillBtnHover }
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: importSkillDialog.openForLoad()
+                            onClicked: importSkillFileDialog.open()
                         }
                     }
                 }
 
+                // 分隔线
+                Rectangle { Layout.fillWidth: true; height: 1; color: cDivider }
+
                 // 设置和关于按钮
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.bottomMargin: 8
-                    Layout.leftMargin: 8
-                    Layout.rightMargin: 8
-                    spacing: 6
+                    Layout.bottomMargin: 10
+                    Layout.topMargin: 6
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    spacing: 8
 
                     Rectangle {
                         Layout.fillWidth: true
                         height: 36
-                        radius: 5
+                        radius: 8
                         color: settingsHover.hovered ? cHighlight : "transparent"
+                        Behavior on color { ColorAnimation { duration: 150 } }
                         Row {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: "⚙️"; color: cMuted; font.pixelSize: 13 }
-                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.settings) ? localeBridge.t.settings : "设置"; color: cText; font.pixelSize: 12 }
+                            Text { text: "⚙️"; color: cMuted; font.pixelSize: 14 }
+                            Text {
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.settings) ? localeBridge.t.settings : "Settings"
+                                color: cText; font.pixelSize: 12; font.weight: Font.Medium
+                            }
                         }
                         HoverHandler { id: settingsHover }
                         MouseArea {
@@ -904,13 +980,17 @@ ApplicationWindow {
                     Rectangle {
                         Layout.fillWidth: true
                         height: 36
-                        radius: 5
+                        radius: 8
                         color: aboutHover.hovered ? cHighlight : "transparent"
+                        Behavior on color { ColorAnimation { duration: 150 } }
                         Row {
                             anchors.centerIn: parent
                             spacing: 6
-                            Text { text: "ℹ️"; color: cMuted; font.pixelSize: 13 }
-                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.about) ? localeBridge.t.about : "关于"; color: cText; font.pixelSize: 12 }
+                            Text { text: "ℹ️"; color: cMuted; font.pixelSize: 14 }
+                            Text {
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.about) ? localeBridge.t.about : "About"
+                                color: cText; font.pixelSize: 12; font.weight: Font.Medium
+                            }
                         }
                         HoverHandler { id: aboutHover }
                         MouseArea {
@@ -937,18 +1017,18 @@ ApplicationWindow {
             Rectangle {
                 id: chatHeader
                 anchors { top: parent.top; left: parent.left; right: parent.right }
-                height: 56
-                color: "transparent"
+                height: 48
+                color: isLight ? Qt.rgba(1, 1, 1, 0.92) : Qt.rgba(0.06, 0.09, 0.16, 0.92)
 
                 RowLayout {
                     anchors { fill: parent; leftMargin: 20; rightMargin: 16 }
-                    spacing: 12
+                    spacing: 10
 
                     // 会话名（双击重命名）
                     Text {
                         id: sessionNameLabel
                         text: mainView.sessionName
-                        color: cText; font.pixelSize: 15; font.bold: true
+                        color: cText; font.pixelSize: 15; font.bold: true; font.letterSpacing: 0.2
                         Layout.fillWidth: true
                         elide: Text.ElideRight
                         MouseArea {
@@ -963,7 +1043,7 @@ ApplicationWindow {
 
                     // 停止生成
                     Rectangle {
-                        height: 30; radius: 5
+                        height: 30; radius: 8
                         width: stopRow.implicitWidth + 24
                         Layout.minimumWidth: stopRow.implicitWidth + 24
                         visible: mainView.isStreaming
@@ -973,7 +1053,7 @@ ApplicationWindow {
                             anchors.centerIn: parent
                             spacing: 5
                             Text { text: "⏹"; font.pixelSize: 12 }
-                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.stop : "Stop"; color: "white"; font.pixelSize: 12 }
+                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.stop : "Stop"; color: "white"; font.pixelSize: 12; font.weight: Font.Medium }
                         }
                         MouseArea {
                             anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -983,16 +1063,20 @@ ApplicationWindow {
 
                     // 清空对话
                     Rectangle {
-                        height: 30; radius: 5
+                        height: 30; radius: 8
                         width: clearRow.implicitWidth + 24
                         Layout.minimumWidth: clearRow.implicitWidth + 24
                         color: clearHover.hovered ? "#ED4245" : cHighlight
+                        Behavior on color { ColorAnimation { duration: 150 } }
                         Row {
                             id: clearRow
                             anchors.centerIn: parent
                             spacing: 5
                             Text { text: "🗑️"; font.pixelSize: 12 }
-                            Text { text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.clear : "Clear"; color: cText; font.pixelSize: 12 }
+                            Text {
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.clear : "Clear"
+                                color: clearHover.hovered ? "white" : cText; font.pixelSize: 12
+                            }
                         }
                         HoverHandler { id: clearHover }
                         MouseArea {
@@ -1001,12 +1085,13 @@ ApplicationWindow {
                         }
                     }
 
-                    // 导出对话（右上角）
+                    // 导出对话
                     Rectangle {
-                        height: 30; radius: 5
+                        height: 30; radius: 8
                         width: exportRow.implicitWidth + 24
                         Layout.minimumWidth: exportRow.implicitWidth + 24
                         color: exportHover.hovered ? Qt.lighter(cHighlight, 1.12) : cHighlight
+                        Behavior on color { ColorAnimation { duration: 150 } }
                         Row {
                             id: exportRow
                             anchors.centerIn: parent
@@ -1032,15 +1117,19 @@ ApplicationWindow {
             Rectangle {
                 id: inputPanel
                 anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
-                height: 130
-                color: cSidebar
+                height: 136
+                color: "transparent"
 
                 Rectangle {
-                    anchors { fill: parent; margins: 16; topMargin: 10 }
+                    anchors { fill: parent; margins: 16; topMargin: 8 }
                     color: cInput
-                    radius: 12
-                    border.width: 1
+                    radius: 14
+                    border.width: inputArea.activeFocus ? 2 : 1
                     border.color: inputArea.activeFocus ? cAccent : cBorder
+
+                    // 输入框聚焦时的微妙阴影
+                    layer.enabled: inputArea.activeFocus
+                    layer.effect: null
 
                     ColumnLayout {
                         anchors { fill: parent; margins: 10 }
@@ -1263,16 +1352,20 @@ ApplicationWindow {
 
                             // 发送按钮
                             Rectangle {
-                                width: 36; height: 32; radius: 6
-                                color: (inputArea.text.trim().length > 0 && !mainView.isStreaming)
-                                    ? cAccent : cHighlight
+                                width: 36; height: 32; radius: 8
+                                property bool canSend: inputArea.text.trim().length > 0 && !mainView.isStreaming
+                                color: canSend ? cAccent : cHighlight
+                                Behavior on color { ColorAnimation { duration: 200 } }
+
+                                scale: sendBtnMouse.pressed ? 0.92 : 1.0
+                                Behavior on scale { NumberAnimation { duration: 100 } }
 
                                 Text {
                                     anchors.centerIn: parent; text: "➤"; font.pixelSize: 17
-                                    color: (inputArea.text.trim().length > 0 && !mainView.isStreaming)
-                                        ? "white" : cMuted
+                                    color: parent.canSend ? "white" : cMuted
                                 }
                                 MouseArea {
+                                    id: sendBtnMouse
                                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                     onClicked: _sendMsg()
                                 }
@@ -1687,7 +1780,7 @@ ApplicationWindow {
     // ── 删除技能确认对话框 ───────────────────────────────────────────────────
     Dialog {
         id: deleteSkillDialog
-        title: "删除技能"
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.deleteSkill) ? localeBridge.t.deleteSkill : "Delete Skill"
         modal: true
         anchors.centerIn: parent
         width: 320
@@ -1700,7 +1793,9 @@ ApplicationWindow {
         contentItem: Column {
             spacing: 12; padding: 16
             Text {
-                text: "确定要删除技能「" + deleteSkillDialog.targetTitle + "」吗？此操作无法撤销。"
+                text: (localeBridge && localeBridge.lang)
+                    ? localeBridge.tr("deleteSkillConfirm", deleteSkillDialog.targetTitle)
+                    : ("Delete skill \"" + deleteSkillDialog.targetTitle + "\"?")
                 color: cText; font.pixelSize: 14; lineHeight: 1.5; wrapMode: Text.Wrap
                 width: 280
             }
@@ -1709,7 +1804,7 @@ ApplicationWindow {
         footer: Row {
             spacing: 8; padding: 12; layoutDirection: Qt.RightToLeft
             Button {
-                text: "删除"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.delete : "Delete"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: "#ED4245" }
@@ -1720,7 +1815,7 @@ ApplicationWindow {
                 }
             }
             Button {
-                text: "取消"; width: 80; height: 32
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cancel : "Cancel"; width: 80; height: 32
                 contentItem: Text { text: parent.text; color: cText; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
@@ -1732,9 +1827,9 @@ ApplicationWindow {
     // ── 导入技能文件对话框（选择 .md 文件）──────────────────────────────────────
     FileDialog {
         id: importSkillFileDialog
-        title: "选择技能文件 (.md)"
+        title: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.selectSkillFile) ? localeBridge.t.selectSkillFile : "Select skill file (.md)"
         fileMode: FileDialog.OpenFile
-        nameFilters: ["Markdown 文件 (*.md)", "所有文件 (*)"]
+        nameFilters: ["Markdown (*.md)", "All Files (*)"]
         onAccepted: {
             var url = selectedFile.toString()
             var xhr = new XMLHttpRequest()
@@ -1790,9 +1885,10 @@ ApplicationWindow {
 
             ContextMenuItem {
                 icon: "✏️"
-                label: "编辑"
+                label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.edit) ? localeBridge.t.edit : "Edit"
                 onTriggered: {
                     editSkillDialog.targetId = skillContextMenu.targetId
+                    editSkillDialog.isNewMode = false
                     editSkillIconField.text  = skillContextMenu.targetIcon
                     editSkillTitleField.text = skillContextMenu.targetTitle
                     editSkillContentArea.text = skillContextMenu.targetContent
@@ -1803,7 +1899,7 @@ ApplicationWindow {
 
             ContextMenuItem {
                 icon: "🗑"
-                label: "删除"
+                label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.delete : "Delete"
                 accent: true
                 onTriggered: {
                     deleteSkillDialog.targetId    = skillContextMenu.targetId
@@ -1844,7 +1940,7 @@ ApplicationWindow {
 
                 Text { text: "✏️"; font.pixelSize: 18 }
                 Text {
-                    text: "编辑技能"
+                    text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.editSkill) ? localeBridge.t.editSkill : "Edit Skill"
                     color: cText; font.pixelSize: 15; font.bold: true
                     Layout.fillWidth: true
                 }
@@ -1875,7 +1971,10 @@ ApplicationWindow {
 
                 ColumnLayout {
                     spacing: 4
-                    Text { text: "图标"; color: cMuted; font.pixelSize: 12 }
+                    Text {
+                        text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.skillIcon) ? localeBridge.t.skillIcon : "Icon"
+                        color: cMuted; font.pixelSize: 12
+                    }
                     Rectangle {
                         width: 56; height: 36; radius: 6
                         color: cInput; border.color: cBorder; border.width: 1
@@ -1892,7 +1991,10 @@ ApplicationWindow {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 4
-                    Text { text: "技能名称"; color: cMuted; font.pixelSize: 12 }
+                    Text {
+                        text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.skillName) ? localeBridge.t.skillName : "Skill Name"
+                        color: cMuted; font.pixelSize: 12
+                    }
                     Rectangle {
                         Layout.fillWidth: true; height: 36; radius: 6
                         color: cInput
@@ -1901,7 +2003,7 @@ ApplicationWindow {
                         TextField {
                             id: editSkillTitleField
                             anchors { fill: parent; leftMargin: 8; rightMargin: 8 }
-                            placeholderText: "技能名称…"
+                            placeholderText: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.skillNamePlaceholder) ? localeBridge.t.skillNamePlaceholder : "Skill name…"
                             placeholderTextColor: cMuted
                             color: cText; font.pixelSize: 13
                             background: null; selectByMouse: true
@@ -1915,7 +2017,10 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 spacing: 4
 
-                Text { text: "技能内容"; color: cMuted; font.pixelSize: 12 }
+                Text {
+                    text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.skillContent) ? localeBridge.t.skillContent : "Skill Content"
+                    color: cMuted; font.pixelSize: 12
+                }
                 Rectangle {
                     Layout.fillWidth: true; Layout.fillHeight: true
                     radius: 6; color: cInput
@@ -1926,7 +2031,7 @@ ApplicationWindow {
                         clip: true
                         TextArea {
                             id: editSkillContentArea
-                            placeholderText: "技能描述 / SOP 内容…"
+                            placeholderText: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.skillContentPlaceholder) ? localeBridge.t.skillContentPlaceholder : "Skill description / SOP content…"
                             placeholderTextColor: cMuted
                             color: cText; font.pixelSize: 13
                             wrapMode: TextArea.Wrap
@@ -1940,7 +2045,7 @@ ApplicationWindow {
         footer: Row {
             spacing: 8; padding: 14; layoutDirection: Qt.RightToLeft
             Button {
-                text: "保存"; width: 90; height: 34
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.save : "Save"; width: 90; height: 34
                 contentItem: Text { text: parent.text; color: "white"; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle {
@@ -1963,7 +2068,7 @@ ApplicationWindow {
                 }
             }
             Button {
-                text: "取消"; width: 90; height: 34
+                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.cancel : "Cancel"; width: 90; height: 34
                 contentItem: Text { text: parent.text; color: cText; font.pixelSize: 13;
                                     horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
                 background: Rectangle { radius: 6; color: cInput; border.color: cBorder }

@@ -134,5 +134,21 @@
   "modelsErrorInvalid": "Failed: Invalid API URL",
   "modelsErrorPrefix": "Failed: ",
   "modelsErrorNoData": "Failed: No model data in response",
-  "modelsSuccessFormat": "Success: loaded %1 models"
+  "modelsSuccessFormat": "Success: loaded %1 models",
+  "history": "History",
+  "skills": "Skills",
+  "newSkill": "New Skill",
+  "newFolderBtn": "New Folder",
+  "editSkill": "Edit Skill",
+  "deleteSkill": "Delete Skill",
+  "deleteSkillConfirm": "Are you sure to delete skill \"%1\"? This cannot be undone.",
+  "skillName": "Skill Name",
+  "skillNamePlaceholder": "Skill name…",
+  "skillContent": "Skill Content",
+  "skillContentPlaceholder": "Skill description / SOP content…",
+  "skillIcon": "Icon",
+  "edit": "Edit",
+  "selectSkillFile": "Select skill file (.md)",
+  "markdownFiles": "Markdown Files (*.md)",
+  "allFiles": "All Files (*)"
 }

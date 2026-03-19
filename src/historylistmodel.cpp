@@ -43,7 +43,10 @@ QHash<int, QByteArray> HistoryListModel::roleNames() const {
 void HistoryListModel::setFlatNodes(const QVariantList &nodes) {
     if (m_nodes == nodes) return;
 
+    const int oldCount = m_nodes.size();
     beginResetModel();
     m_nodes = nodes;
     endResetModel();
+    if (m_nodes.size() != oldCount)
+        emit countChanged();
 }

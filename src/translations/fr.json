@@ -133,5 +133,21 @@
   "modelsErrorInvalid": "Échec : URL API invalide",
   "modelsErrorPrefix": "Échec : ",
   "modelsErrorNoData": "Échec : pas de données de modèles",
-  "modelsSuccessFormat": "Succès : %1 modèles chargés"
+  "modelsSuccessFormat": "Succès : %1 modèles chargés",
+  "history": "Historique",
+  "skills": "Compétences",
+  "newSkill": "Nouvelle compétence",
+  "newFolderBtn": "Nouveau dossier",
+  "editSkill": "Modifier la compétence",
+  "deleteSkill": "Supprimer la compétence",
+  "deleteSkillConfirm": "Êtes-vous sûr de vouloir supprimer la compétence « %1 » ? Cette action est irréversible.",
+  "skillName": "Nom de la compétence",
+  "skillNamePlaceholder": "Nom de la compétence…",
+  "skillContent": "Contenu de la compétence",
+  "skillContentPlaceholder": "Description de la compétence / contenu SOP…",
+  "skillIcon": "Icône",
+  "edit": "Modifier",
+  "selectSkillFile": "Sélectionner un fichier de compétence (.md)",
+  "markdownFiles": "Fichiers Markdown (*.md)",
+  "allFiles": "Tous les fichiers (*)"
 }

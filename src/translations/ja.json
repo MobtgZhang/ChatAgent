@@ -133,5 +133,21 @@
   "modelsErrorInvalid": "失敗：API URL が無効です",
   "modelsErrorPrefix": "失敗：",
   "modelsErrorNoData": "失敗：レスポンスにモデルデータがありません",
-  "modelsSuccessFormat": "成功：%1 個のモデルを読み込みました"
+  "modelsSuccessFormat": "成功：%1 個のモデルを読み込みました",
+  "history": "履歴",
+  "skills": "スキル",
+  "newSkill": "新規スキル",
+  "newFolderBtn": "新規フォルダ",
+  "editSkill": "スキル編集",
+  "deleteSkill": "スキル削除",
+  "deleteSkillConfirm": "スキル「%1」を削除しますか？この操作は元に戻せません。",
+  "skillName": "スキル名",
+  "skillNamePlaceholder": "スキル名…",
+  "skillContent": "スキル内容",
+  "skillContentPlaceholder": "スキルの説明/SOP内容…",
+  "skillIcon": "アイコン",
+  "edit": "編集",
+  "selectSkillFile": "スキルファイルを選択 (.md)",
+  "markdownFiles": "Markdownファイル (*.md)",
+  "allFiles": "すべてのファイル (*)"
 }

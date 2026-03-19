@@ -30,9 +30,10 @@ signals:
     void skillsChanged();
 
 private:
-    QString memoryDirPath() const;
+    QString skillsDirPath() const;
     QString skillsFilePath() const;
     void initDefaultSkills();
+    void migrateOldSkillsFile();
 
     Settings *m_settings;
     QVariantList m_skills;

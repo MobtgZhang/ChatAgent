@@ -134,5 +134,21 @@
   "modelsErrorInvalid": "Error: URL de la API no válida",
   "modelsErrorPrefix": "Error: ",
   "modelsErrorNoData": "Error: sin datos de modelos en la respuesta",
-  "modelsSuccessFormat": "Correcto: se han cargado %1 modelos"
+  "modelsSuccessFormat": "Correcto: se han cargado %1 modelos",
+  "history": "Historial",
+  "skills": "Habilidades",
+  "newSkill": "Nueva Habilidad",
+  "newFolderBtn": "Nueva Carpeta",
+  "editSkill": "Editar Habilidad",
+  "deleteSkill": "Eliminar Habilidad",
+  "deleteSkillConfirm": "¿Está seguro de eliminar la habilidad \"%1\"? Esta acción no se puede deshacer.",
+  "skillName": "Nombre de Habilidad",
+  "skillNamePlaceholder": "Nombre de la habilidad…",
+  "skillContent": "Contenido de Habilidad",
+  "skillContentPlaceholder": "Descripción de la habilidad / contenido SOP…",
+  "skillIcon": "Icono",
+  "edit": "Editar",
+  "selectSkillFile": "Seleccionar archivo de habilidad (.md)",
+  "markdownFiles": "Archivos Markdown (*.md)",
+  "allFiles": "Todos los Archivos (*)"
 }
