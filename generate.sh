@@ -17,7 +17,10 @@ fi
 # ==========================================
 # 1. 变量配置
 # ==========================================
-QT_INSTALL_DIR="${QT_INSTALL_DIR:-/home/mobtgzhang/Qt/6.10.2/gcc_64}"
+# Qt 安装根目录默认 /home/mobtgzhang/Qt；套件路径可用 QT_INSTALL_DIR 直接指定
+QT_ROOT="${QT_ROOT:-/home/mobtgzhang/Qt}"
+QT_INSTALL_DIR="${QT_INSTALL_DIR:-${QT_ROOT}/6.10.2/gcc_64}"
+QT6_CMAKE_DIR="${QT_INSTALL_DIR}/lib/cmake/Qt6"
 BUILD_DIR="build"
 INSTALL_PREFIX="/opt/appchatagent"
 PKG_NAME="appchatagent"
@@ -31,7 +34,8 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "========================================"
 echo "📦 生成自包含 deb 安装包"
 echo "   项目: ${APP_NAME} v${VERSION}"
-echo "   Qt 路径: ${QT_INSTALL_DIR}"
+echo "   Qt 根目录: ${QT_ROOT}"
+echo "   Qt 套件: ${QT_INSTALL_DIR}"
 echo "   安装路径: ${INSTALL_PREFIX}"
 echo "   （内置 Qt 库，无需额外依赖）"
 echo "========================================"
@@ -45,9 +49,20 @@ if [ ! -d "$BUILD_DIR" ]; then
 fi
 cd "$BUILD_DIR"
 
+if [ ! -f "${QT6_CMAKE_DIR}/Qt6Config.cmake" ]; then
+    echo "❌ 未找到 Qt6: ${QT6_CMAKE_DIR}/Qt6Config.cmake"
+    exit 1
+fi
+if [ -f CMakeCache.txt ] && grep -qE '^Qt6_DIR:PATH=/usr/' CMakeCache.txt 2>/dev/null; then
+    echo "⚠️  清除指向系统 Qt 的 CMake 缓存，改用: ${QT_INSTALL_DIR}"
+    rm -f CMakeCache.txt
+    rm -rf CMakeFiles
+fi
+
 echo ""
 echo "⚙️  配置 CMake..."
-cmake -DCMAKE_PREFIX_PATH="${QT_INSTALL_DIR}" \
+cmake -DQt6_DIR="${QT6_CMAKE_DIR}" \
+      -DCMAKE_PREFIX_PATH="${QT_INSTALL_DIR}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
       ..

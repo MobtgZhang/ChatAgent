@@ -86,6 +86,8 @@ qt_add_resources(appChatAgent "qml_res"
         src/icons/icon_chat_active.svg
         src/icons/icon_agent_active.svg
         src/icons/icon_planning_active.svg
+        src/icons/icon_debug.svg
+        src/icons/icon_debug_active.svg
         src/icons/icon_model.svg
         src/icons/app_icon.png
         src/qml/Settings.qml

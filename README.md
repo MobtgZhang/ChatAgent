@@ -6,7 +6,8 @@
 
 ## 特点
 
-- **三模式**：Chat（纯对话）/ Agent（ReAct 工具调用）/ Planning（规划拆解）
+- **四工作区（类 Cursor）**：**Plan** / **Agent** / **Debug** / **Ask**；各工作区可单独选模型，会话持久化 `chatMode`
+- **文档**：[docs/workspaces.md](docs/workspaces.md) 说明各模式工具策略与设置项
 - **九大工具**：文件、Shell、网页搜索、键盘、OCR、窗口、剪贴板、等待、图像匹配
 - **记忆**：短期滚动窗口 + 长期 SQLite 持久化，自动注入上下文
 - **ReAct 编排**：意图识别 → 工具选择 → 执行 → 反思，多轮循环
@@ -20,7 +21,7 @@
 
 | 平台     | 构建并运行 |
 |----------|------------|
-| Linux    | `./run.sh`（可设置 `QT_INSTALL_DIR` 覆盖默认 Qt 路径） |
+| Linux    | `./run.sh`（默认 Qt 根目录 `/home/mobtgzhang/Qt`，套件 `…/6.10.2/gcc_64`；可用 `QT_ROOT` 或 `QT_INSTALL_DIR` 覆盖） |
 | macOS    | `./run.sh`（默认 Qt 路径 `~/Qt/6.10.2/macos`） |
 | Windows  | `.\run.ps1`（可设置 `$env:QT_INSTALL_DIR` 指定 Qt 路径） |
 
@@ -30,10 +31,13 @@
 
 ```bash
 mkdir build && cd build
-cmake -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x.x/gcc_64 -DCMAKE_BUILD_TYPE=Release ..
+# CMAKE_PREFIX_PATH 指向 Qt 套件目录（含 lib/cmake/Qt6），本机默认与 run.sh 一致：
+cmake -DCMAKE_PREFIX_PATH=/home/mobtgzhang/Qt/6.10.2/gcc_64 -DCMAKE_BUILD_TYPE=Release ..
 cmake --build . --parallel
 ./appChatAgent   # macOS 可能为 ./appChatAgent.app/Contents/MacOS/appChatAgent
 ```
+
+其他机器请将路径换成本地 Qt 的 `版本/gcc_64`（或 macOS 的 `版本/macos`）。
 
 ## 依赖
 
