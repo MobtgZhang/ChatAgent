@@ -31,12 +31,33 @@ QString Settings::settingsFilePath() const {
 void Settings::setApiKey(const QString &v)      { if (m_apiKey      != v) { m_apiKey      = v; emit apiKeyChanged(); } }
 void Settings::setApiUrl(const QString &v)      { if (m_apiUrl      != v) { m_apiUrl      = v; emit apiUrlChanged(); } }
 void Settings::setModelName(const QString &v)   { if (m_modelName   != v) { m_modelName   = v; emit modelNameChanged(); } }
+void Settings::setModelNameAsk(const QString &v)   { if (m_modelNameAsk   != v) { m_modelNameAsk   = v; emit modelNameAskChanged(); } }
+void Settings::setModelNamePlan(const QString &v)  { if (m_modelNamePlan  != v) { m_modelNamePlan  = v; emit modelNamePlanChanged(); } }
+void Settings::setModelNameAgent(const QString &v) { if (m_modelNameAgent != v) { m_modelNameAgent = v; emit modelNameAgentChanged(); } }
+void Settings::setModelNameDebug(const QString &v) { if (m_modelNameDebug != v) { m_modelNameDebug = v; emit modelNameDebugChanged(); } }
+void Settings::setTemperatureAsk(double v) {
+    v = qBound(-1.0, v, 2.0);
+    if (m_temperatureAsk != v) { m_temperatureAsk = v; emit temperatureAskChanged(); }
+}
+void Settings::setTemperaturePlan(double v) {
+    v = qBound(-1.0, v, 2.0);
+    if (m_temperaturePlan != v) { m_temperaturePlan = v; emit temperaturePlanChanged(); }
+}
+void Settings::setTemperatureAgent(double v) {
+    v = qBound(-1.0, v, 2.0);
+    if (m_temperatureAgent != v) { m_temperatureAgent = v; emit temperatureAgentChanged(); }
+}
+void Settings::setTemperatureDebug(double v) {
+    v = qBound(-1.0, v, 2.0);
+    if (m_temperatureDebug != v) { m_temperatureDebug = v; emit temperatureDebugChanged(); }
+}
 void Settings::setTemperature(double v)         { if (m_temperature != v) { m_temperature = v; emit temperatureChanged(); } }
 void Settings::setTopP(double v)                { if (m_topP        != v) { m_topP        = v; emit topPChanged(); } }
 void Settings::setTopK(int v)                   { if (m_topK        != v) { m_topK        = v; emit topKChanged(); } }
 void Settings::setMaxTokens(int v)              { if (m_maxTokens   != v) { m_maxTokens   = v; emit maxTokensChanged(); } }
 void Settings::setSystemPrompt(const QString &v){ if (m_systemPrompt!= v) { m_systemPrompt= v; emit systemPromptChanged(); } }
 void Settings::setMaxToolRounds(int v)           { int clamped = qBound(5, v, 40); if (m_maxToolRounds != clamped) { m_maxToolRounds = clamped; emit maxToolRoundsChanged(); } }
+void Settings::setDebugAllowShell(bool v)        { if (m_debugAllowShell != v) { m_debugAllowShell = v; emit debugAllowShellChanged(); } }
 void Settings::setShowThinking(bool v)            { if (m_showThinking!= v) { m_showThinking= v; emit showThinkingChanged(); } }
 void Settings::setChatOnline(bool v)              { if (m_chatOnline!= v) { m_chatOnline= v; emit chatOnlineChanged(); save(); } }
 void Settings::setTheme(const QString &v)         { QString t = (v == QStringLiteral("light")) ? QStringLiteral("light") : QStringLiteral("dark"); if (m_theme != t) { m_theme = t; emit themeChanged(); } }
@@ -103,6 +124,74 @@ void Settings::setLocaleBridge(LocaleBridge *bridge) {
         m_locale->reload();
 }
 
+QString Settings::effectiveModelForChatMode(const QString &chatMode) const {
+    QString m = chatMode.trimmed().toLower();
+    if (m == QLatin1String("chat"))
+        m = QStringLiteral("ask");
+    else if (m == QLatin1String("planning"))
+        m = QStringLiteral("plan");
+    QString pick;
+    if (m == QLatin1String("ask"))
+        pick = m_modelNameAsk;
+    else if (m == QLatin1String("plan"))
+        pick = m_modelNamePlan;
+    else if (m == QLatin1String("agent"))
+        pick = m_modelNameAgent;
+    else if (m == QLatin1String("debug"))
+        pick = m_modelNameDebug;
+    else
+        pick = m_modelNameAsk;
+    pick = pick.trimmed();
+    if (pick.isEmpty())
+        return m_modelName;
+    return pick;
+}
+
+double Settings::effectiveTemperatureForChatMode(const QString &chatMode) const {
+    QString m = chatMode.trimmed().toLower();
+    if (m == QLatin1String("chat"))
+        m = QStringLiteral("ask");
+    else if (m == QLatin1String("planning"))
+        m = QStringLiteral("plan");
+    double t = -1.0;
+    if (m == QLatin1String("ask"))
+        t = m_temperatureAsk;
+    else if (m == QLatin1String("plan"))
+        t = m_temperaturePlan;
+    else if (m == QLatin1String("agent"))
+        t = m_temperatureAgent;
+    else if (m == QLatin1String("debug"))
+        t = m_temperatureDebug;
+    if (t < 0.0)
+        return m_temperature;
+    return qBound(0.0, t, 2.0);
+}
+
+void Settings::syncWorkspaceModelsToList() {
+    if (m_modelList.isEmpty())
+        return;
+    auto fix = [this](QString &ws) {
+        const QString x = ws.trimmed();
+        return !x.isEmpty() && !m_modelList.contains(x);
+    };
+    if (fix(m_modelNameAsk)) {
+        m_modelNameAsk.clear();
+        emit modelNameAskChanged();
+    }
+    if (fix(m_modelNamePlan)) {
+        m_modelNamePlan.clear();
+        emit modelNamePlanChanged();
+    }
+    if (fix(m_modelNameAgent)) {
+        m_modelNameAgent.clear();
+        emit modelNameAgentChanged();
+    }
+    if (fix(m_modelNameDebug)) {
+        m_modelNameDebug.clear();
+        emit modelNameDebugChanged();
+    }
+}
+
 QString Settings::_tr(const QString &key, const QString &arg) const {
     if (m_locale)
         return arg.isEmpty() ? m_locale->tr(key) : m_locale->tr(key, arg);
@@ -122,6 +211,11 @@ void Settings::removeModel(const QString &model) {
     if (m_modelList.removeOne(model)) {
         if (m_modelName == model && !m_modelList.isEmpty())
             setModelName(m_modelList.first());
+        if (m_modelNameAsk == model) setModelNameAsk(QString());
+        if (m_modelNamePlan == model) setModelNamePlan(QString());
+        if (m_modelNameAgent == model) setModelNameAgent(QString());
+        if (m_modelNameDebug == model) setModelNameDebug(QString());
+        syncWorkspaceModelsToList();
         emit modelListChanged();
         save();
     }
@@ -227,6 +321,7 @@ void Settings::refreshModels() {
         // 当前模型不在列表中时，自动切到第一个
         if (!m_modelList.contains(m_modelName) && !m_modelList.isEmpty())
             setModelName(m_modelList.first());
+        syncWorkspaceModelsToList();
 
         emit modelListChanged();
         save();
@@ -243,12 +338,21 @@ void Settings::save() {
     root["apiKey"]       = m_apiKey;
     root["apiUrl"]       = m_apiUrl;
     root["modelName"]    = m_modelName;
+    root["modelNameAsk"]   = m_modelNameAsk;
+    root["modelNamePlan"]  = m_modelNamePlan;
+    root["modelNameAgent"] = m_modelNameAgent;
+    root["modelNameDebug"] = m_modelNameDebug;
+    root["temperatureAsk"]   = m_temperatureAsk;
+    root["temperaturePlan"]  = m_temperaturePlan;
+    root["temperatureAgent"] = m_temperatureAgent;
+    root["temperatureDebug"] = m_temperatureDebug;
     root["temperature"]  = m_temperature;
     root["topP"]         = m_topP;
     root["topK"]         = m_topK;
     root["maxTokens"]    = m_maxTokens;
     root["systemPrompt"]  = m_systemPrompt;
     root["maxToolRounds"]  = m_maxToolRounds;
+    root["debugAllowShell"] = m_debugAllowShell;
     root["showThinking"]   = m_showThinking;
     root["chatOnline"]     = m_chatOnline;
     root["theme"]          = m_theme;
@@ -292,12 +396,21 @@ void Settings::load() {
     if (root.contains("apiKey"))       m_apiKey       = root["apiKey"].toString();
     if (root.contains("apiUrl"))       m_apiUrl       = root["apiUrl"].toString();
     if (root.contains("modelName"))    m_modelName    = root["modelName"].toString();
+    if (root.contains("modelNameAsk"))   m_modelNameAsk   = root["modelNameAsk"].toString();
+    if (root.contains("modelNamePlan"))  m_modelNamePlan  = root["modelNamePlan"].toString();
+    if (root.contains("modelNameAgent")) m_modelNameAgent = root["modelNameAgent"].toString();
+    if (root.contains("modelNameDebug")) m_modelNameDebug = root["modelNameDebug"].toString();
+    if (root.contains("temperatureAsk"))   m_temperatureAsk   = root["temperatureAsk"].toDouble(-1.0);
+    if (root.contains("temperaturePlan"))  m_temperaturePlan  = root["temperaturePlan"].toDouble(-1.0);
+    if (root.contains("temperatureAgent")) m_temperatureAgent = root["temperatureAgent"].toDouble(-1.0);
+    if (root.contains("temperatureDebug")) m_temperatureDebug = root["temperatureDebug"].toDouble(-1.0);
     if (root.contains("temperature"))  m_temperature  = root["temperature"].toDouble(0.7);
     if (root.contains("topP"))         m_topP         = root["topP"].toDouble(0.9);
     if (root.contains("topK"))         m_topK         = root["topK"].toInt(50);
     if (root.contains("maxTokens"))    m_maxTokens    = root["maxTokens"].toInt(4096);
     if (root.contains("systemPrompt"))  m_systemPrompt  = root["systemPrompt"].toString();
     if (root.contains("maxToolRounds"))  m_maxToolRounds = qBound(5, root["maxToolRounds"].toInt(40), 40);
+    if (root.contains("debugAllowShell")) m_debugAllowShell = root["debugAllowShell"].toBool(false);
     if (root.contains("showThinking"))   m_showThinking  = root["showThinking"].toBool(false);
     if (root.contains("chatOnline"))     m_chatOnline    = root["chatOnline"].toBool(false);
     if (root.contains("theme")) {
@@ -335,5 +448,6 @@ void Settings::load() {
         for (const QJsonValue &v : root["modelList"].toArray())
             m_modelList.append(v.toString());
     }
+    syncWorkspaceModelsToList();
 }
 

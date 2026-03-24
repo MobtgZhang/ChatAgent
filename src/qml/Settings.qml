@@ -338,6 +338,113 @@ Window {
                     }
 
                     SectionBox {
+                        label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.workspaceModelsSection : "Workspace models"
+                        hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.workspaceModelsHint : ""
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 12
+
+                            Repeater {
+                                model: [
+                                    { key: "ask",   label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.modelAskWorkspace : "Ask" },
+                                    { key: "plan",  label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.modelPlanWorkspace : "Plan" },
+                                    { key: "agent", label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.modelAgentWorkspace : "Agent" },
+                                    { key: "debug", label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.modelDebugWorkspace : "Debug" }
+                                ]
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+                                    Text {
+                                        text: modelData.label
+                                        color: cMuted
+                                        font.pixelSize: 12
+                                    }
+                                    ComboBox {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 36
+                                        model: settings.modelList
+                                        currentIndex: {
+                                            var list = settings.modelList
+                                            var name = ""
+                                            if (modelData.key === "ask") name = settings.modelNameAsk
+                                            else if (modelData.key === "plan") name = settings.modelNamePlan
+                                            else if (modelData.key === "agent") name = settings.modelNameAgent
+                                            else name = settings.modelNameDebug
+                                            if (!name || name.length === 0) {
+                                                var ig = list.indexOf(settings.modelName)
+                                                return ig >= 0 ? ig : 0
+                                            }
+                                            var i = list.indexOf(name)
+                                            return i >= 0 ? i : 0
+                                        }
+                                        onActivated: {
+                                            var v = settings.modelList[currentIndex]
+                                            if (modelData.key === "ask") settings.modelNameAsk = v
+                                            else if (modelData.key === "plan") settings.modelNamePlan = v
+                                            else if (modelData.key === "agent") settings.modelNameAgent = v
+                                            else settings.modelNameDebug = v
+                                            settings.save()
+                                        }
+                                        contentItem: Text {
+                                            leftPadding: 10
+                                            text: parent.displayText
+                                            color: cText; font.pixelSize: 13
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                        background: Rectangle { radius: 5; color: cInput; border.color: cBorder }
+                                        popup.background: Rectangle { color: cPopupBg; radius: 5; border.color: cBorder }
+                                        delegate: ItemDelegate {
+                                            width: parent ? parent.width - 20 : 200
+                                            hoverEnabled: true
+                                            contentItem: Text {
+                                                text: modelData
+                                                color: cText
+                                                font.pixelSize: 13
+                                                elide: Text.ElideRight
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                            background: Rectangle {
+                                                color: (parent.highlighted || parent.hovered) ? cHighlight : "transparent"
+                                                radius: 4
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 12
+                                CheckBox {
+                                    id: dbgShellCb
+                                    checked: settings.debugAllowShell
+                                    text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.debugAllowShell : "Debug: allow shell"
+                                    onClicked: {
+                                        settings.debugAllowShell = checked
+                                        settings.save()
+                                    }
+                                    contentItem: Text {
+                                        text: dbgShellCb.text
+                                        color: cText
+                                        font.pixelSize: 13
+                                        leftPadding: dbgShellCb.indicator.width + dbgShellCb.spacing
+                                        verticalAlignment: Text.AlignVCenter
+                                    }
+                                }
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.debugAllowShellHint : ""
+                                color: cMuted
+                                font.pixelSize: 11
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                    }
+
+                    SectionBox {
                         label: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.actionPrinciple : "Action Principle"
                         hint:  (localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.actionPrincipleHint : ""
                     }

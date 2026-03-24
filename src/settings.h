@@ -16,6 +16,16 @@ class Settings : public QObject {
     Q_PROPERTY(QString   apiUrl      READ apiUrl      WRITE setApiUrl      NOTIFY apiUrlChanged)
     Q_PROPERTY(QString   modelName   READ modelName   WRITE setModelName   NOTIFY modelNameChanged)
     Q_PROPERTY(QStringList modelList READ modelList   NOTIFY modelListChanged)
+    // 工作区专用模型（空则回退 modelName）：Ask / Plan / Agent / Debug
+    Q_PROPERTY(QString modelNameAsk   READ modelNameAsk   WRITE setModelNameAsk   NOTIFY modelNameAskChanged)
+    Q_PROPERTY(QString modelNamePlan  READ modelNamePlan  WRITE setModelNamePlan  NOTIFY modelNamePlanChanged)
+    Q_PROPERTY(QString modelNameAgent READ modelNameAgent WRITE setModelNameAgent NOTIFY modelNameAgentChanged)
+    Q_PROPERTY(QString modelNameDebug READ modelNameDebug WRITE setModelNameDebug NOTIFY modelNameDebugChanged)
+    // 工作区温度覆盖：<0 表示使用全局 temperature
+    Q_PROPERTY(double temperatureAsk   READ temperatureAsk   WRITE setTemperatureAsk   NOTIFY temperatureAskChanged)
+    Q_PROPERTY(double temperaturePlan  READ temperaturePlan  WRITE setTemperaturePlan  NOTIFY temperaturePlanChanged)
+    Q_PROPERTY(double temperatureAgent READ temperatureAgent WRITE setTemperatureAgent NOTIFY temperatureAgentChanged)
+    Q_PROPERTY(double temperatureDebug READ temperatureDebug WRITE setTemperatureDebug NOTIFY temperatureDebugChanged)
 
     // ── 参数 ─────────────────────────────────────────────────────────────────
     Q_PROPERTY(double temperature READ temperature WRITE setTemperature NOTIFY temperatureChanged)
@@ -28,6 +38,8 @@ class Settings : public QObject {
 
     // ── Agent 行为 ──────────────────────────────────────────────────────────────
     Q_PROPERTY(int maxToolRounds READ maxToolRounds WRITE setMaxToolRounds NOTIFY maxToolRoundsChanged)
+    // Debug 工作区是否允许 shell（及 python）工具
+    Q_PROPERTY(bool debugAllowShell READ debugAllowShell WRITE setDebugAllowShell NOTIFY debugAllowShellChanged)
 
     // ── 系统设置 ────────────────────────────────────────────────────────────
     Q_PROPERTY(QString theme          READ theme          WRITE setTheme          NOTIFY themeChanged)
@@ -64,12 +76,21 @@ public:
     QString    apiUrl()       const { return m_apiUrl; }
     QString    modelName()    const { return m_modelName; }
     QStringList modelList()   const { return m_modelList; }
+    QString    modelNameAsk()   const { return m_modelNameAsk; }
+    QString    modelNamePlan()  const { return m_modelNamePlan; }
+    QString    modelNameAgent() const { return m_modelNameAgent; }
+    QString    modelNameDebug() const { return m_modelNameDebug; }
+    double     temperatureAsk()   const { return m_temperatureAsk; }
+    double     temperaturePlan()  const { return m_temperaturePlan; }
+    double     temperatureAgent() const { return m_temperatureAgent; }
+    double     temperatureDebug() const { return m_temperatureDebug; }
     double     temperature()  const { return m_temperature; }
     double     topP()         const { return m_topP; }
     int        topK()         const { return m_topK; }
     int        maxTokens()    const { return m_maxTokens; }
     QString    systemPrompt() const { return m_systemPrompt; }
     int        maxToolRounds() const { return m_maxToolRounds; }
+    bool       debugAllowShell() const { return m_debugAllowShell; }
     bool       showThinking() const { return m_showThinking; }
     bool       chatOnline()   const { return m_chatOnline; }
     bool       modelsRefreshing() const { return m_modelsRefreshing; }
@@ -89,12 +110,21 @@ public:
     void setApiKey(const QString &v);
     void setApiUrl(const QString &v);
     void setModelName(const QString &v);
+    void setModelNameAsk(const QString &v);
+    void setModelNamePlan(const QString &v);
+    void setModelNameAgent(const QString &v);
+    void setModelNameDebug(const QString &v);
+    void setTemperatureAsk(double v);
+    void setTemperaturePlan(double v);
+    void setTemperatureAgent(double v);
+    void setTemperatureDebug(double v);
     void setTemperature(double v);
     void setTopP(double v);
     void setTopK(int v);
     void setMaxTokens(int v);
     void setSystemPrompt(const QString &v);
     void setMaxToolRounds(int v);
+    void setDebugAllowShell(bool v);
     void setShowThinking(bool v);
     void setChatOnline(bool v);
     void setTheme(const QString &v);
@@ -126,6 +156,10 @@ public:
     // 切换语言并立即生效（供 QML 调用）
     Q_INVOKABLE void applyLanguage(const QString &lang);
 
+    /** chatMode: ask | plan | agent | debug */
+    Q_INVOKABLE QString effectiveModelForChatMode(const QString &chatMode) const;
+    Q_INVOKABLE double effectiveTemperatureForChatMode(const QString &chatMode) const;
+
     void setLocaleBridge(LocaleBridge *bridge);
 
 signals:
@@ -133,12 +167,21 @@ signals:
     void apiUrlChanged();
     void modelNameChanged();
     void modelListChanged();
+    void modelNameAskChanged();
+    void modelNamePlanChanged();
+    void modelNameAgentChanged();
+    void modelNameDebugChanged();
+    void temperatureAskChanged();
+    void temperaturePlanChanged();
+    void temperatureAgentChanged();
+    void temperatureDebugChanged();
     void temperatureChanged();
     void topPChanged();
     void topKChanged();
     void maxTokensChanged();
     void systemPromptChanged();
     void maxToolRoundsChanged();
+    void debugAllowShellChanged();
     void showThinkingChanged();
     void chatOnlineChanged();
     void modelsRefreshingChanged();
@@ -161,6 +204,14 @@ private:
     // 改这两行
     QString     m_modelName   = QStringLiteral("qwen3.5-plus");
     QStringList m_modelList   = { "qwen3.5-plus" };   // 启动后由 refreshModels() 覆盖
+    QString     m_modelNameAsk;
+    QString     m_modelNamePlan;
+    QString     m_modelNameAgent;
+    QString     m_modelNameDebug;
+    double      m_temperatureAsk   = -1.0;
+    double      m_temperaturePlan  = -1.0;
+    double      m_temperatureAgent = -1.0;
+    double      m_temperatureDebug = -1.0;
 
     double      m_temperature = 0.7;
     double      m_topP        = 0.9;
@@ -168,6 +219,7 @@ private:
     int         m_maxTokens   = 4096;
     QString     m_systemPrompt;
     int         m_maxToolRounds = 40;
+    bool        m_debugAllowShell = false;
     bool        m_showThinking = false;
     bool        m_chatOnline   = true;    // 对话模式下联网搜索开关（默认开启以便用户看到联网功能）
 
@@ -189,6 +241,7 @@ private:
 
     QString settingsFilePath() const;
     QString _tr(const QString &key, const QString &arg = QString()) const;
+    void syncWorkspaceModelsToList();
 };
 
 #endif // SETTINGS_H
