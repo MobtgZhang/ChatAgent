@@ -766,8 +766,9 @@
 
     // 记住每个折叠面板的展开 / 收起状态，避免每次刷新后用户选择丢失
     const panelCollapsedState = {};
-    // 记住上一次渲染的消息快照，避免 300ms 轮询时整块重复重绘导致“闪烁感”
+    // 记住上一次渲染：整表 key（跳过相同帧）+ 各条 JSON（流式时仅重绘最后一条 AI 气泡）
     let lastMessagesKey = "";
+    var lastMsgSnapshotStrings = null;
 
     // ── 计算消息编辑历史的 DFS 版本位置 ──────────────────────────────────────
     // 输入：editHistory 数组（每项含 content / parentIndex）、currentEditIndex（flat 索引）
@@ -1086,6 +1087,7 @@
       cancelBtn.onclick = function() {
         editingMsgIdx = -1;
         lastMessagesKey = '';
+        lastMsgSnapshotStrings = null;
       };
 
       var saveBtn = document.createElement('button');
@@ -1096,6 +1098,7 @@
         if (!newText) return;
         editingMsgIdx = -1;
         lastMessagesKey = '';
+        lastMsgSnapshotStrings = null;
         if (qtMainView && typeof qtMainView.editAndRegenerate === 'function') {
           qtMainView.editAndRegenerate(msgIdx, newText);
         }
@@ -1256,17 +1259,234 @@
       return panel;
     }
 
+    function populateAiBubble(bubble, m, idx, totalMessages, aiRoundCount) {
+      var msgId = m.id || idx;
+      var contentText = (m.content || '');
+      var hasBlocks = Array.isArray(m.blocks) && m.blocks.length > 0;
+      var ragStatus = (m.ragSearchStatus || '').toString();
+      var rewriteThinking = (m.rewriteThinking || '').toString();
+      var rewriteMs = Number(m.rewriteDurationMs);
+      var searchMs = Number(m.searchDurationMs);
+
+      if (ragStatus === 'rewriting' || (rewriteThinking && !ragStatus)) {
+        var tKey = 'rewrite-' + msgId;
+        bubble.appendChild(createMetaPanel('查询重写', '🔁', '重写中',
+          undefined, rewriteThinking, 'rewrite-' + msgId, true, tKey, true));
+      } else if ((ragStatus === 'searching' || ragStatus === 'done') && rewriteThinking) {
+        var sec = isFinite(rewriteMs) && rewriteMs > 0 ? (rewriteMs / 1000.0) : undefined;
+        bubble.appendChild(createMetaPanel('查询重写', '🔁', '已重写', sec, rewriteThinking,
+          'rewrite-' + msgId, false, 'rewrite-' + msgId, true));
+      }
+
+      if (ragStatus === 'searching') {
+        var tKey = 'search-' + msgId;
+        bubble.appendChild(createMetaPanel('联网检索', '🌐', '查询中',
+          undefined, buildRagLinksSummary(m.ragLinks), 'search-' + msgId, true, tKey, true));
+      } else if (ragStatus === 'done') {
+        var sec = isFinite(searchMs) && searchMs > 0 ? (searchMs / 1000.0) : undefined;
+        bubble.appendChild(createMetaPanel('联网检索', '🌐', '查询完成', sec,
+          buildRagLinksSummary(m.ragLinks), 'search-' + msgId, false, 'search-' + msgId, true));
+      }
+
+      if (hasBlocks) {
+        var thinkingCount = 0;
+        var replyParts = [];
+
+        m.blocks.forEach(function(b, blockIdx) {
+          if (b.type === 'thinking') {
+            thinkingCount++;
+            var thinkText = (b.content || '').toString().trim();
+            var durSec = Number(b.durationSec);
+            var isLastBlock = blockIdx === m.blocks.length - 1;
+            var isActiveThink = isLastBlock && !!m.isThinking;
+            var tkKey = 'agent-think-' + msgId + '-' + blockIdx;
+            var note = isActiveThink ? '思考中…' : '思考完成';
+            var secVal = isActiveThink ? undefined
+              : (isFinite(durSec) && durSec > 0 ? durSec : undefined);
+
+            bubble.appendChild(createMetaPanel(
+              '（智能体 第' + aiRoundCount + '轮）思考过程', '💭', note,
+              secVal, thinkText,
+              'agent-thinking-' + msgId + '-' + blockIdx,
+              isActiveThink, tkKey, true));
+
+          } else if (b.type === 'tool') {
+            var toolName = b.toolName || 'tool';
+            var toolArgs = b.args || {};
+            var result = (b.result || '').toString();
+            var durSec = Number(b.durationSec);
+            var durVal = isFinite(durSec) && durSec > 0 ? durSec : undefined;
+            var truncResult = result.length > 500 ? result.slice(0, 500) + '…' : result;
+
+            var toolPanel = createMetaPanel(
+              '（智能体 第' + aiRoundCount + '轮）工具调用: ' + toolName, '🔧', '已完成',
+              durVal, null,
+              'agent-tool-' + msgId + '-' + blockIdx,
+              false, null, true);
+            var toolBody = toolPanel.querySelector('.meta-panel-body');
+            if (toolBody) {
+              // 调用参数
+              var hasArgs = toolArgs && typeof toolArgs === 'object'
+                            && Object.keys(toolArgs).length > 0;
+              if (hasArgs) {
+                var argsLabel = document.createElement('div');
+                argsLabel.className = 'tool-section-label';
+                argsLabel.textContent = '调用参数';
+                toolBody.appendChild(argsLabel);
+                var argsDiv = document.createElement('div');
+                argsDiv.className = 'tool-panel-result';
+                try { argsDiv.textContent = JSON.stringify(toolArgs, null, 2); }
+                catch(e) { argsDiv.textContent = String(toolArgs); }
+                toolBody.appendChild(argsDiv);
+              }
+              // 执行结果
+              if (truncResult) {
+                var resLabel = document.createElement('div');
+                resLabel.className = 'tool-section-label';
+                resLabel.textContent = '执行结果';
+                toolBody.appendChild(resLabel);
+                var resultDiv = document.createElement('div');
+                resultDiv.className = 'tool-panel-result';
+                resultDiv.textContent = truncResult;
+                toolBody.appendChild(resultDiv);
+              }
+            }
+            bubble.appendChild(toolPanel);
+
+          } else if (b.type === 'reply') {
+            replyParts.push(b.content || '');
+          }
+        });
+
+        if (m.pendingToolName) {
+          var pendingKey = 'pending-tool-' + msgId;
+          bubble.appendChild(createMetaPanel(
+            '（智能体 第' + aiRoundCount + '轮）工具调用: ' + m.pendingToolName, '🔧', '执行中…',
+            undefined, null,
+            'pending-tool-' + msgId,
+            true, pendingKey, true));
+        }
+
+        var replyText = replyParts.join('');
+        if (replyText.trim()) {
+          var divider = document.createElement('div');
+          divider.className = 'meta-output-divider';
+          bubble.appendChild(divider);
+          var replyDiv = document.createElement('div');
+          replyDiv.className = 'bubble-content';
+          renderMarkdownInto(replyDiv, replyText, isLightTheme);
+          bubble.appendChild(replyDiv);
+        }
+
+      } else {
+        var ragDone = !ragStatus || ragStatus === 'done';
+        var thinkText = (m.thinking || '').toString().trim();
+        var isStreaming = !!m.isThinking;
+
+        if (ragDone && (thinkText || isStreaming)) {
+          var tkKey = 'thinking-' + msgId;
+          var note = isStreaming ? '思考中…' : '思考完成';
+          bubble.appendChild(createMetaPanel('思考过程', '💭', note,
+            undefined, thinkText,
+            'thinking-' + msgId,
+            isStreaming, tkKey, true));
+        }
+
+        if (contentText && contentText.trim()) {
+          if (bubble.children.length > 0) {
+            var divider = document.createElement('div');
+            divider.className = 'meta-output-divider';
+            bubble.appendChild(divider);
+          }
+          var chatDiv = document.createElement('div');
+          chatDiv.className = 'bubble-content';
+          renderMarkdownInto(chatDiv, contentText, isLightTheme);
+          bubble.appendChild(chatDiv);
+        }
+      }
+
+      var meta = document.createElement('div');
+      meta.className = 'msg-meta';
+      var aiCopyBtn = document.createElement('span');
+      aiCopyBtn.textContent = '复制';
+      aiCopyBtn.style.cursor = 'pointer';
+      aiCopyBtn.onclick = (function(msgData, hasB) {
+        return function() {
+          var text;
+          if (hasB) {
+            var parts = [];
+            msgData.blocks.forEach(function(b) {
+              if (b.type === 'reply') parts.push(b.content || '');
+            });
+            text = parts.join('') || (msgData.content || '');
+          } else {
+            text = (msgData.content || '');
+          }
+          if (text) copyToClipboard(text);
+        };
+      })(m, hasBlocks);
+      meta.appendChild(aiCopyBtn);
+      bubble.appendChild(meta);
+    }
+
+    function tryPatchLastAiBubble(box, messages) {
+      if (!messages || messages.length === 0)
+        return false;
+      if (!lastMsgSnapshotStrings || lastMsgSnapshotStrings.length !== messages.length)
+        return false;
+      var lastIdx = messages.length - 1;
+      for (var i = 0; i < lastIdx; i++) {
+        try {
+          if (JSON.stringify(messages[i]) !== lastMsgSnapshotStrings[i])
+            return false;
+        } catch (e) {
+          return false;
+        }
+      }
+      var lastM = messages[lastIdx];
+      var role = String(lastM.role || '').toLowerCase();
+      if (role !== 'ai' && role !== 'assistant')
+        return false;
+      var rows = box.querySelectorAll('.msg-row');
+      if (rows.length !== messages.length)
+        return false;
+      var lastRow = rows[lastIdx];
+      if (!lastRow.classList.contains('from-ai'))
+        return false;
+      var bubble = lastRow.querySelector('.bubble');
+      if (!bubble)
+        return false;
+      var arCount = 0;
+      for (var j = 0; j <= lastIdx; j++) {
+        var r = String(messages[j].role || '').toLowerCase();
+        if (r === 'ai' || r === 'assistant')
+          arCount++;
+      }
+      bubble.innerHTML = '';
+      populateAiBubble(bubble, lastM, lastIdx, messages.length, arCount);
+      try {
+        lastMsgSnapshotStrings = [];
+        for (var s = 0; s < messages.length; s++)
+          lastMsgSnapshotStrings.push(JSON.stringify(messages[s]));
+      } catch (e2) {
+        lastMsgSnapshotStrings = null;
+      }
+      return true;
+    }
+
     function renderMessages(messages) {
       if (editingMsgIdx >= 0) return;
 
       var box = document.getElementById('messages');
       if (!box) return;
 
+      var key;
       try {
-        var key = JSON.stringify(messages || []);
+        key = JSON.stringify(messages || []);
         if (key === lastMessagesKey) return;
-        lastMessagesKey = key;
-      } catch (e) {}
+      } catch (e) {
+        return;
+      }
 
       var scroller = document.getElementById('chat-scroll');
       var isAtBottom = true;
@@ -1277,6 +1497,19 @@
         isAtBottom = distanceToBottom < 40;
       }
 
+      if (tryPatchLastAiBubble(box, messages)) {
+        lastMessagesKey = key;
+        if (scroller) {
+          if (isAtBottom) {
+            scroller.scrollTop = scroller.scrollHeight + 100;
+          } else {
+            scroller.scrollTop = previousScrollTop;
+          }
+        }
+        return;
+      }
+
+      lastMessagesKey = key;
       box.innerHTML = '';
       var totalMessages = messages.length;
       var aiRoundCount = 0;
@@ -1359,6 +1592,7 @@
                 if (qtMainView && typeof qtMainView.setUserMessageVersion === 'function')
                   qtMainView.setUserMessageVersion(msgIdx, pos);
                 lastMessagesKey = '';
+                lastMsgSnapshotStrings = null;
               };
             })(idx, editInfo.prevPos);
 
@@ -1376,6 +1610,7 @@
                 if (qtMainView && typeof qtMainView.setUserMessageVersion === 'function')
                   qtMainView.setUserMessageVersion(msgIdx, pos);
                 lastMessagesKey = '';
+                lastMsgSnapshotStrings = null;
               };
             })(idx, editInfo.nextPos);
 
@@ -1387,178 +1622,21 @@
 
         } else if (isAi) {
           aiRoundCount++;
-          var contentText = (m.content || '');
-          var hasBlocks = Array.isArray(m.blocks) && m.blocks.length > 0;
-          var ragStatus = (m.ragSearchStatus || '').toString();
-          var rewriteThinking = (m.rewriteThinking || '').toString();
-          var rewriteMs = Number(m.rewriteDurationMs);
-          var searchMs = Number(m.searchDurationMs);
-
-          if (ragStatus === 'rewriting' || (rewriteThinking && !ragStatus)) {
-            var tKey = 'rewrite-' + msgId;
-            bubble.appendChild(createMetaPanel('查询重写', '🔁', '重写中',
-              undefined, rewriteThinking, 'rewrite-' + msgId, true, tKey, true));
-          } else if ((ragStatus === 'searching' || ragStatus === 'done') && rewriteThinking) {
-            var sec = isFinite(rewriteMs) && rewriteMs > 0 ? (rewriteMs / 1000.0) : undefined;
-            bubble.appendChild(createMetaPanel('查询重写', '🔁', '已重写', sec, rewriteThinking,
-              'rewrite-' + msgId, false, 'rewrite-' + msgId, true));
-          }
-
-          if (ragStatus === 'searching') {
-            var tKey = 'search-' + msgId;
-            bubble.appendChild(createMetaPanel('联网检索', '🌐', '查询中',
-              undefined, buildRagLinksSummary(m.ragLinks), 'search-' + msgId, true, tKey, true));
-          } else if (ragStatus === 'done') {
-            var sec = isFinite(searchMs) && searchMs > 0 ? (searchMs / 1000.0) : undefined;
-            bubble.appendChild(createMetaPanel('联网检索', '🌐', '查询完成', sec,
-              buildRagLinksSummary(m.ragLinks), 'search-' + msgId, false, 'search-' + msgId, true));
-          }
-
-          if (hasBlocks) {
-            var thinkingCount = 0;
-            var replyParts = [];
-
-            m.blocks.forEach(function(b, blockIdx) {
-              if (b.type === 'thinking') {
-                thinkingCount++;
-                var thinkText = (b.content || '').toString().trim();
-                var durSec = Number(b.durationSec);
-                var isLastBlock = blockIdx === m.blocks.length - 1;
-                var isActiveThink = isLastBlock && !!m.isThinking;
-                var tkKey = 'agent-think-' + msgId + '-' + blockIdx;
-                var note = isActiveThink ? '思考中…' : '思考完成';
-                var secVal = isActiveThink ? undefined
-                  : (isFinite(durSec) && durSec > 0 ? durSec : undefined);
-
-                bubble.appendChild(createMetaPanel(
-                  '（智能体 第' + aiRoundCount + '轮）思考过程', '💭', note,
-                  secVal, thinkText,
-                  'agent-thinking-' + msgId + '-' + blockIdx,
-                  isActiveThink, tkKey, true));
-
-              } else if (b.type === 'tool') {
-                var toolName = b.toolName || 'tool';
-                var toolArgs = b.args || {};
-                var result = (b.result || '').toString();
-                var durSec = Number(b.durationSec);
-                var durVal = isFinite(durSec) && durSec > 0 ? durSec : undefined;
-                var truncResult = result.length > 500 ? result.slice(0, 500) + '…' : result;
-
-                var toolPanel = createMetaPanel(
-                  '（智能体 第' + aiRoundCount + '轮）工具调用: ' + toolName, '🔧', '已完成',
-                  durVal, null,
-                  'agent-tool-' + msgId + '-' + blockIdx,
-                  false, null, true);
-                var toolBody = toolPanel.querySelector('.meta-panel-body');
-                if (toolBody) {
-                  // 调用参数
-                  var hasArgs = toolArgs && typeof toolArgs === 'object'
-                                && Object.keys(toolArgs).length > 0;
-                  if (hasArgs) {
-                    var argsLabel = document.createElement('div');
-                    argsLabel.className = 'tool-section-label';
-                    argsLabel.textContent = '调用参数';
-                    toolBody.appendChild(argsLabel);
-                    var argsDiv = document.createElement('div');
-                    argsDiv.className = 'tool-panel-result';
-                    try { argsDiv.textContent = JSON.stringify(toolArgs, null, 2); }
-                    catch(e) { argsDiv.textContent = String(toolArgs); }
-                    toolBody.appendChild(argsDiv);
-                  }
-                  // 执行结果
-                  if (truncResult) {
-                    var resLabel = document.createElement('div');
-                    resLabel.className = 'tool-section-label';
-                    resLabel.textContent = '执行结果';
-                    toolBody.appendChild(resLabel);
-                    var resultDiv = document.createElement('div');
-                    resultDiv.className = 'tool-panel-result';
-                    resultDiv.textContent = truncResult;
-                    toolBody.appendChild(resultDiv);
-                  }
-                }
-                bubble.appendChild(toolPanel);
-
-              } else if (b.type === 'reply') {
-                replyParts.push(b.content || '');
-              }
-            });
-
-            if (m.pendingToolName) {
-              var pendingKey = 'pending-tool-' + msgId;
-              bubble.appendChild(createMetaPanel(
-                '（智能体 第' + aiRoundCount + '轮）工具调用: ' + m.pendingToolName, '🔧', '执行中…',
-                undefined, null,
-                'pending-tool-' + msgId,
-                true, pendingKey, true));
-            }
-
-            var replyText = replyParts.join('');
-            if (replyText.trim()) {
-              var divider = document.createElement('div');
-              divider.className = 'meta-output-divider';
-              bubble.appendChild(divider);
-              var replyDiv = document.createElement('div');
-              replyDiv.className = 'bubble-content';
-              renderMarkdownInto(replyDiv, replyText, isLightTheme);
-              bubble.appendChild(replyDiv);
-            }
-
-          } else {
-            var ragDone = !ragStatus || ragStatus === 'done';
-            var thinkText = (m.thinking || '').toString().trim();
-            var isStreaming = !!m.isThinking;
-
-            if (ragDone && (thinkText || isStreaming)) {
-              var tkKey = 'thinking-' + msgId;
-              var note = isStreaming ? '思考中…' : '思考完成';
-              bubble.appendChild(createMetaPanel('思考过程', '💭', note,
-                undefined, thinkText,
-                'thinking-' + msgId,
-                isStreaming, tkKey, true));
-            }
-
-            if (contentText && contentText.trim()) {
-              if (bubble.children.length > 0) {
-                var divider = document.createElement('div');
-                divider.className = 'meta-output-divider';
-                bubble.appendChild(divider);
-              }
-              var chatDiv = document.createElement('div');
-              chatDiv.className = 'bubble-content';
-              renderMarkdownInto(chatDiv, contentText, isLightTheme);
-              bubble.appendChild(chatDiv);
-            }
-          }
-
-          var meta = document.createElement('div');
-          meta.className = 'msg-meta';
-          var aiCopyBtn = document.createElement('span');
-          aiCopyBtn.textContent = '复制';
-          aiCopyBtn.style.cursor = 'pointer';
-          aiCopyBtn.onclick = (function(msgData, hasB) {
-            return function() {
-              var text;
-              if (hasB) {
-                var parts = [];
-                msgData.blocks.forEach(function(b) {
-                  if (b.type === 'reply') parts.push(b.content || '');
-                });
-                text = parts.join('') || (msgData.content || '');
-              } else {
-                text = (msgData.content || '');
-              }
-              if (text) copyToClipboard(text);
-            };
-          })(m, hasBlocks);
-          meta.appendChild(aiCopyBtn);
-          bubble.appendChild(meta);
+          populateAiBubble(bubble, m, idx, totalMessages, aiRoundCount);
         }
 
         row.appendChild(avatar);
         row.appendChild(bubble);
         box.appendChild(row);
       });
+
+      try {
+        lastMsgSnapshotStrings = [];
+        for (var si = 0; si < messages.length; si++)
+          lastMsgSnapshotStrings.push(JSON.stringify(messages[si]));
+      } catch (eSnap) {
+        lastMsgSnapshotStrings = null;
+      }
 
       if (scroller) {
         if (isAtBottom) {

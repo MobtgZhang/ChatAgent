@@ -1170,21 +1170,24 @@ ApplicationWindow {
                                 id: modeButtonRow
                                 spacing: 4
 
-                                readonly property var modes: ["chat", "agent", "planning"]
-                                readonly property var labels: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.modeChat) ? [localeBridge.t.modeChat, localeBridge.t.modeAgent, localeBridge.t.modeResearch] : ["对话", "智能体", "研究"]
-                                readonly property var iconNorm: ["qrc:/src/icons/icon_chat.svg", "qrc:/src/icons/icon_agent.svg", "qrc:/src/icons/icon_planning.svg"]
-                                readonly property var iconActive: ["qrc:/src/icons/icon_chat_active.svg", "qrc:/src/icons/icon_agent_active.svg", "qrc:/src/icons/icon_planning_active.svg"]
+                                readonly property var modes: ["plan", "agent", "debug", "ask"]
+                                readonly property var labels: (localeBridge && localeBridge.t && localeBridge.tVersion >= 0 && localeBridge.t.modeAsk)
+                                    ? [localeBridge.t.modePlan, localeBridge.t.modeAgent, localeBridge.t.modeDebug, localeBridge.t.modeAsk]
+                                    : ["Plan", "Agent", "Debug", "Ask"]
+                                readonly property var iconNorm: ["qrc:/src/icons/icon_planning.svg", "qrc:/src/icons/icon_agent.svg", "qrc:/src/icons/icon_debug.svg", "qrc:/src/icons/icon_chat.svg"]
+                                readonly property var iconActive: ["qrc:/src/icons/icon_planning_active.svg", "qrc:/src/icons/icon_agent_active.svg", "qrc:/src/icons/icon_debug_active.svg", "qrc:/src/icons/icon_chat_active.svg"]
 
                                 function currentIndex() {
                                     var m = mainView.chatMode
-                                    if (m === "chat") return 0
+                                    if (m === "chat" || m === "ask") return 3
+                                    if (m === "planning" || m === "plan") return 0
                                     if (m === "agent") return 1
-                                    if (m === "planning") return 2
-                                    return 0
+                                    if (m === "debug") return 2
+                                    return 3
                                 }
 
                                 Repeater {
-                                    model: 3
+                                    model: 4
 
                                     Rectangle {
                                         id: modeBtn
@@ -1242,7 +1245,7 @@ ApplicationWindow {
                             // 对话模式下的联网切换按钮（一个按钮实现联网/不联网两种状态）
                             Rectangle {
                                 id: onlineToggleBtn
-                                visible: mainView.chatMode === "chat"
+                                visible: mainView.chatMode === "ask" || mainView.chatMode === "chat"
                                 height: 32
                                 width: onlineToggleRow.implicitWidth + 16
                                 radius: 8
@@ -1319,8 +1322,9 @@ ApplicationWindow {
                                         mipmap: true
                                     }
                                     Text {
-                                        text: (typeof settings !== "undefined" && settings.modelName)
-                                            ? settings.modelName : ((localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.model : "Model")
+                                        text: (typeof settings !== "undefined" && mainView)
+                                            ? settings.effectiveModelForChatMode(mainView.chatMode)
+                                            : ((localeBridge && localeBridge.t && localeBridge.tVersion >= 0) ? localeBridge.t.model : "Model")
                                         color: cText
                                         font.pixelSize: 12
                                         font.weight: Font.Normal
@@ -1411,7 +1415,8 @@ ApplicationWindow {
                         "document.body.style.setProperty('--text','" + (light ? "#1A202C" : "#F1F5F9") + "');" +
                         "document.body.style.setProperty('--text-muted','" + (light ? "#6B7280" : "#9CA3AF") + "');" +
                         "window.isLightTheme = " + (light ? "true" : "false") + ";" +
-                        "lastMessagesKey = '';";
+                        "lastMessagesKey = '';" +
+                        "if (typeof lastMsgSnapshotStrings !== 'undefined') lastMsgSnapshotStrings = null;";
                     chatWebView.runJavaScript(js);
                 }
 
@@ -1715,62 +1720,80 @@ ApplicationWindow {
             border.color: cBorder
         }
 
-        contentItem: ListView {
-            clip: true
-            // 引用外层 Popup，方便在 delegate 中关闭弹窗
-            property var popup: modelSelectPopup
-            model: {
-                if (typeof settings === "undefined" || !settings.modelList)
-                    return []
-                // 将模型列表视为循环列表：当前模型在最上面，当前模型之前的部分拼接到末尾
-                var raw = settings.modelList
-                var current = settings.modelName
-                var idx = raw.indexOf(current)
-                if (idx <= 0)
-                    return raw
-                var head = raw.slice(idx)      // 从当前模型开始到结尾
-                var tail = raw.slice(0, idx)   // 当前模型之前的部分
-                return head.concat(tail)
-            }
-            spacing: 2
-            implicitHeight: Math.min(contentHeight, 240)
+        // 用 Item 包住 ListView，保证有明确几何与命中区域；delegate 用 ItemDelegate 统一处理点击与关闭
+        contentItem: Item {
+            implicitWidth: Math.max(0, modelSelectPopup.width - modelSelectPopup.leftPadding - modelSelectPopup.rightPadding)
+            implicitHeight: Math.min(Math.max(modelListView.contentHeight, 36), 240)
 
-            delegate: Rectangle {
-                width: ListView.view.width - 12
-                height: 34
-                radius: 6
-                color: modelItemHover.hovered ? cHighlight : "transparent"
-
-                Row {
-                    anchors { fill: parent; leftMargin: 10 }
-                    spacing: 8
-                    Text {
-                        text: "✓"
-                        color: (typeof settings !== "undefined" && settings.modelName === modelData)
-                            ? cAccent : "transparent"
-                        font.pixelSize: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 14
-                    }
-                    Text {
-                        text: modelData
-                        color: cText
-                        font.pixelSize: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        elide: Text.ElideRight
-                        width: 130
-                    }
+            ListView {
+                id: modelListView
+                anchors.fill: parent
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                interactive: true
+                model: {
+                    if (typeof settings === "undefined" || !settings.modelList)
+                        return []
+                    var raw = settings.modelList
+                    var current = (mainView) ? settings.effectiveModelForChatMode(mainView.chatMode) : settings.modelName
+                    var idx = raw.indexOf(current)
+                    if (idx <= 0)
+                        return raw
+                    var head = raw.slice(idx)
+                    var tail = raw.slice(0, idx)
+                    return head.concat(tail)
                 }
+                spacing: 2
 
-                HoverHandler { id: modelItemHover }
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
+                delegate: ItemDelegate {
+                    // 勿在 contentItem 子树里用 ListView.view，深嵌套时可能为 null
+                    width: modelListView.width
+                    height: 34
+                    padding: 0
+                    leftPadding: 10
+                    rightPadding: 8
+                    topPadding: 0
+                    bottomPadding: 0
+                    hoverEnabled: true
+
+                    background: Rectangle {
+                        implicitWidth: parent.width
+                        implicitHeight: 34
+                        radius: 6
+                        color: parent.hovered ? cHighlight : "transparent"
+                    }
+
+                    contentItem: Row {
+                        spacing: 8
+                        Text {
+                            text: "✓"
+                            color: (typeof settings !== "undefined" && mainView && settings.effectiveModelForChatMode(mainView.chatMode) === modelData)
+                                ? cAccent : "transparent"
+                            font.pixelSize: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 14
+                        }
+                        Text {
+                            text: modelData
+                            color: cText
+                            font.pixelSize: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            elide: Text.ElideRight
+                            width: Math.max(0, modelListView.width - 32)
+                        }
+                    }
+
                     onClicked: {
-                        if (typeof settings !== "undefined")
-                            settings.modelName = modelData
-                        if (ListView.view && ListView.view.popup)
-                            ListView.view.popup.close()
+                        if (typeof settings !== "undefined" && mainView) {
+                            var mode = mainView.chatMode
+                            if (mode === "chat" || mode === "ask") settings.modelNameAsk = modelData
+                            else if (mode === "planning" || mode === "plan") settings.modelNamePlan = modelData
+                            else if (mode === "agent") settings.modelNameAgent = modelData
+                            else if (mode === "debug") settings.modelNameDebug = modelData
+                            else settings.modelNameAsk = modelData
+                            settings.save()
+                        }
+                        modelSelectPopup.close()
                     }
                 }
             }
