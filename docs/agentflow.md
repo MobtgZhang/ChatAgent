@@ -1,12 +1,6 @@
-🔧 **工具调用:** visualize:read_me
-
-> 💭 思考中...
-
-🔧 **工具调用:** visualize:show_widget
-
-> 💭 思考中...
-
 # Generic Agent 架构设计方案
+
+> **说明**：本文前半为通用形式化设计；**与当前仓库实现的对照**见文末「工作区与模块映射」。
 
 ---
 
@@ -213,3 +207,20 @@ snapshot_t = \bigl(\mathcal{M}_{work}^t, ; goals_t, ; plan_t, ; env_state_t\bigr
 | **整体**      | 模块解耦、异步并发、失败优雅降级           |
 
 这套方案的核心优势在于：Memory 赋予 Agent **持久认知能力**，Skill 赋予其**可扩展行动能力**，History 赋予其**可追溯反思能力**，三者协同驱动 Orchestrator 完成复杂的长时程任务。
+
+---
+
+## 八、工作区与模块映射（ChatAgent 当前实现）
+
+| 概念 | 代码入口 | 行为摘要 |
+|------|----------|----------|
+| **Ask** | `MainView::doStartApiCall` | 无工具；可选联网 RAG；模型 `Settings::effectiveModelForChatMode("ask")` |
+| **Plan** | `MainView::startAgentCall` + `AgentCore` `mode=planning` | 工具白名单：`file`, `web_search`, `memory`, `wait` |
+| **Agent** | `AgentCore` 全工具 | 自动保存技能 / SOP（`tryAutoSaveSkill`） |
+| **Debug** | `AgentCore` + `agentUiMode=debug` | 默认同上白名单；`debugAllowShell` 开启后增加 `shell`, `python` |
+| **分模型** | `Settings` + `MainView::applyLlmForCurrentChatMode` | 各工作区可单独配置模型名；空则回退全局 `modelName` |
+| **会话工作区** | 会话 JSON 字段 `chatMode` | `saveCurrentSession` / `loadSessionFile` 持久化 |
+
+记忆注入：`MemoryModule::buildContextForPrompt(userQuery, maxChars)` 按用户当前输入对 SOP 打分排序并控制总长度；SQLite 上建有 `sops` / `lessons` / `facts` 辅助索引。
+
+更细的产品说明见 [workspaces.md](workspaces.md)。
