@@ -36,6 +36,24 @@ QVariantList ToolRegistry::toolsSchema() const {
     return list;
 }
 
+QVariantList ToolRegistry::toolsSchemaAllowNames(const QStringList &allowedNames) const {
+    QVariantList list;
+    for (BaseTool *t : m_tools) {
+        if (!t) continue;
+        if (!allowedNames.contains(t->name()))
+            continue;
+        QVariantMap m;
+        m["type"] = "function";
+        m["function"] = QVariantMap{
+            { "name", t->name() },
+            { "description", t->description() },
+            { "parameters", t->parametersSchema() }
+        };
+        list.append(m);
+    }
+    return list;
+}
+
 QStringList ToolRegistry::toolNames() const {
     return m_tools.keys();
 }

@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QVariantMap>
 #include <QVariantList>
+#include <QStringList>
 
 class BaseTool;
 
@@ -24,6 +25,7 @@ public:
     Q_INVOKABLE QString execute(const QString &toolName, const QVariantMap &args);
     // 获取所有工具的 OpenAI 函数格式 schema（用于 API 调用）
     QVariantList toolsSchema() const;
+    QVariantList toolsSchemaAllowNames(const QStringList &allowedNames) const;
     // 获取工具名称列表
     Q_INVOKABLE QStringList toolNames() const;
 

@@ -4,6 +4,7 @@
 #include "memory_module.h"
 #include "skill_manager.h"
 #include "web_search_service.h"
+#include <algorithm>
 #include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QTimer>
@@ -25,6 +26,17 @@ void AgentCore::setMode(const QString &mode) {
 
 void AgentCore::setSystemPromptBase(const QString &base) {
     m_systemPromptBase = base;
+}
+
+void AgentCore::setAgentUiMode(const QString &mode) {
+    QString m = mode.trimmed().toLower();
+    if (m != QLatin1String("plan") && m != QLatin1String("debug"))
+        m = QStringLiteral("agent");
+    m_agentUiMode = m;
+}
+
+void AgentCore::setAllowedToolNames(const QStringList &names) {
+    m_allowedToolNames = names;
 }
 
 void AgentCore::setMaxToolRounds(int n) {
@@ -73,24 +85,35 @@ QString AgentCore::buildSkillContext() const {
     QStringList words = m_currentUserInput.split(
         QRegularExpression(QStringLiteral("[\\s,，。、！？!?；;:：\\-]+")), Qt::SkipEmptyParts);
 
-    QStringList matched;
+    struct Hit {
+        QString block;
+        double score = 0;
+    };
+    QList<Hit> hits;
     for (const QVariant &v : allSkills) {
         QVariantMap skill = v.toMap();
         QString title   = skill["title"].toString();
         QString content = skill["content"].toString();
-
-        bool hit = false;
+        double score = 0;
         for (const QString &w : words) {
-            if (w.length() >= 2 &&
-                (title.contains(w, Qt::CaseInsensitive) ||
-                 content.contains(w, Qt::CaseInsensitive))) {
-                hit = true;
-                break;
-            }
+            if (w.length() < 2) continue;
+            if (title.contains(w, Qt::CaseInsensitive))
+                score += 3.0;
+            if (content.contains(w, Qt::CaseInsensitive))
+                score += 1.0;
         }
-        if (hit)
-            matched << QStringLiteral("### 技能：%1\n%2").arg(title, content);
+        if (score <= 0) continue;
+        Hit h;
+        h.score = score;
+        h.block = QStringLiteral("### 技能：%1\n%2").arg(title, content);
+        hits.append(h);
     }
+    std::sort(hits.begin(), hits.end(), [](const Hit &a, const Hit &b) { return a.score > b.score; });
+
+    QStringList matched;
+    const int kMaxSkills = 5;
+    for (int i = 0; i < hits.size() && i < kMaxSkills; ++i)
+        matched << hits[i].block;
 
     if (matched.isEmpty()) return QString();
 
@@ -109,15 +132,27 @@ QString AgentCore::buildSystemPrompt() const {
     if (!skillCtx.isEmpty())
         base += "\n\n" + skillCtx;
 
-    // 注入长期记忆（L2 facts + L3 SOPs + 教训）
+    // 注入长期记忆（L2 facts + L3 SOPs + 教训），按当前用户 query 做 Top-K 与长度预算
     if (m_memory) {
-        QString ctx = m_memory->buildContextForPrompt();
+        QString ctx = m_memory->buildContextForPrompt(m_currentUserInput, 4500);
         if (!ctx.isEmpty())
             base += "\n\n" + ctx;
     }
 
-    if (m_mode == "planning") {
-        base += "\n\n[Mode: Planning] Break complex tasks into steps. Plan first, then execute tools in order.";
+    if (m_mode == QLatin1String("planning")) {
+        base += QStringLiteral(
+            "\n\n## [工作区: Plan / 规划]\n"
+            "你的首要产出是**可执行的结构化计划**（Markdown）：目标、前置条件、分步检查清单（`- [ ]`）、风险与回滚点。\n"
+            "优先用工具**收集事实**（读文件、搜索、查记忆），避免在未确认前执行破坏性 shell/写文件；确需执行时保持最小范围。\n"
+            "每轮先更新或细化计划，再决定是否调用工具。");
+    }
+
+    if (m_agentUiMode == QLatin1String("debug")) {
+        base += QStringLiteral(
+            "\n\n## [工作区: Debug / 调试]\n"
+            "聚焦**根因分析**：复现步骤、观测证据（日志/返回值/环境）、假设与验证顺序。\n"
+            "每次工具调用应能缩小问题范围；避免无关操作。若信息不足，先列出需要的最小额外信息。\n"
+            "不要对用户的生产数据做不可逆操作；高危操作须明确说明风险。");
     }
 
     return base;
@@ -140,7 +175,14 @@ void AgentCore::run(const QVariantList &messages, const QString &userInput) {
         return;
     }
 
-    m_llm->setTools(m_registry ? m_registry->toolsSchema() : QVariantList{});
+    QVariantList toolSchema;
+    if (m_registry) {
+        if (m_allowedToolNames.isEmpty())
+            toolSchema = m_registry->toolsSchema();
+        else
+            toolSchema = m_registry->toolsSchemaAllowNames(m_allowedToolNames);
+    }
+    m_llm->setTools(toolSchema);
 
     // 感知阶段（Sense）：buildSystemPrompt 内部注入技能上下文和记忆上下文
     QString sysPrompt = buildSystemPrompt();
@@ -166,9 +208,8 @@ void AgentCore::onChunk(const QString &content, const QString &reasoning, bool i
 void AgentCore::onLLMFinished(const QString &fullContent) {
     emit finished();
 
-    // 记忆阶段（Memory）：Agent 模式下至少调用过一次工具，说明是真实任务执行
-    // 自动生成 Summary 并保存为技能，形成自进化闭环
-    if (m_mode != "chat" && m_currentToolRound > 0
+    // 记忆阶段：仅 Agent 工作区自动提炼技能（避免 Plan/Debug 污染技能库）
+    if (m_agentUiMode == QLatin1String("agent") && m_currentToolRound > 0
         && m_skillManager && m_llm && !m_currentUserInput.isEmpty()) {
         tryAutoSaveSkill(fullContent);
     }

@@ -32,8 +32,13 @@ public:
     void setMemory(MemoryModule *memory);
     void setSkillManager(SkillManager *sm);
     void setSystemPromptBase(const QString &base);  // 来自 Settings，为空时用内置默认
+    /** 与 UI 工作区一致：plan | agent | debug，影响系统提示与是否自动保存技能 */
+    void setAgentUiMode(const QString &mode);
+    /** 空列表表示允许全部工具；否则仅暴露所列工具名 */
+    void setAllowedToolNames(const QStringList &names);
 
     QString mode() const { return m_mode; }
+    QString agentUiMode() const { return m_agentUiMode; }
     void setMode(const QString &mode);
     int maxToolRounds() const { return m_maxToolRounds; }
     void setMaxToolRounds(int n);
@@ -74,6 +79,8 @@ private:
     SkillManager  *m_skillManager = nullptr;
 
     QString m_mode = "agent";
+    QString m_agentUiMode = QStringLiteral("agent");
+    QStringList m_allowedToolNames;  // 空 = 不限制
     QString m_systemPromptBase;   // 用户自定义，空则用内置默认
     QVariantList m_pendingMessages;
     int m_maxToolRounds = 40;
