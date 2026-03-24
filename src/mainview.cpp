@@ -35,6 +35,20 @@
 #include <QFutureWatcher>
 #include <QMap>
 
+namespace {
+QString normalizeChatMode(QString m) {
+    m = m.trimmed().toLower();
+    if (m == QLatin1String("chat"))
+        return QStringLiteral("ask");
+    if (m == QLatin1String("planning"))
+        return QStringLiteral("plan");
+    if (m == QLatin1String("ask") || m == QLatin1String("plan")
+        || m == QLatin1String("agent") || m == QLatin1String("debug"))
+        return m;
+    return QStringLiteral("ask");
+}
+} // namespace
+
 // ── 构造 ──────────────────────────────────────────────────────────────────────
 MainView::MainView(Settings *settings, History *history, QObject *parent)
     : QObject(parent), m_settings(settings), m_history(history)
@@ -107,12 +121,46 @@ void MainView::clearMessages() {
 }
 
 void MainView::setChatMode(const QString &mode) {
-    QString m = mode;
-    if (m != "chat" && m != "agent" && m != "planning")
-        m = "chat";
+    const QString m = normalizeChatMode(mode);
     if (m_chatMode == m) return;
     m_chatMode = m;
     emit chatModeChanged();
+    applyLlmForCurrentChatMode();
+    saveCurrentSession();
+}
+
+void MainView::applyLlmForCurrentChatMode() {
+    if (!m_llmBackend || !m_settings) return;
+    const QString wm = normalizeChatMode(m_chatMode);
+    m_llmBackend->setModel(m_settings->effectiveModelForChatMode(wm));
+    m_llmBackend->setChatRequestParams(
+        m_settings->effectiveTemperatureForChatMode(wm),
+        m_settings->maxTokens());
+}
+
+void MainView::configureAgentForChatMode() {
+    if (!m_agentCore) return;
+    const QString cm = normalizeChatMode(m_chatMode);
+    if (cm == QLatin1String("plan")) {
+        m_agentCore->setAgentUiMode(QStringLiteral("plan"));
+        m_agentCore->setAllowedToolNames(
+            {QStringLiteral("file"), QStringLiteral("web_search"),
+             QStringLiteral("memory"), QStringLiteral("wait")});
+        m_agentCore->setMode(QStringLiteral("planning"));
+    } else if (cm == QLatin1String("debug")) {
+        m_agentCore->setAgentUiMode(QStringLiteral("debug"));
+        QStringList allow{QStringLiteral("file"), QStringLiteral("web_search"),
+                          QStringLiteral("memory"), QStringLiteral("wait")};
+        if (m_settings && m_settings->debugAllowShell()) {
+            allow << QStringLiteral("shell") << QStringLiteral("python");
+        }
+        m_agentCore->setAllowedToolNames(allow);
+        m_agentCore->setMode(QStringLiteral("agent"));
+    } else {
+        m_agentCore->setAgentUiMode(QStringLiteral("agent"));
+        m_agentCore->setAllowedToolNames(QStringList());
+        m_agentCore->setMode(QStringLiteral("agent"));
+    }
 }
 
 void MainView::setupAgent() {
@@ -122,10 +170,21 @@ void MainView::setupAgent() {
     m_llmBackend = llm;
     llm->setApiKey(m_settings->apiKey());
     llm->setApiUrl(m_settings->apiUrl());
-    llm->setModel(m_settings->modelName());
+    llm->setChatRequestParams(m_settings->temperature(), m_settings->maxTokens());
     connect(m_settings, &Settings::apiKeyChanged, this, [this, llm]() { llm->setApiKey(m_settings->apiKey()); });
     connect(m_settings, &Settings::apiUrlChanged, this, [this, llm]() { llm->setApiUrl(m_settings->apiUrl()); });
-    connect(m_settings, &Settings::modelNameChanged, this, [this, llm]() { llm->setModel(m_settings->modelName()); });
+    auto syncLlm = [this]() { applyLlmForCurrentChatMode(); };
+    connect(m_settings, &Settings::modelNameChanged, this, syncLlm);
+    connect(m_settings, &Settings::modelNameAskChanged, this, syncLlm);
+    connect(m_settings, &Settings::modelNamePlanChanged, this, syncLlm);
+    connect(m_settings, &Settings::modelNameAgentChanged, this, syncLlm);
+    connect(m_settings, &Settings::modelNameDebugChanged, this, syncLlm);
+    connect(m_settings, &Settings::temperatureChanged, this, syncLlm);
+    connect(m_settings, &Settings::temperatureAskChanged, this, syncLlm);
+    connect(m_settings, &Settings::temperaturePlanChanged, this, syncLlm);
+    connect(m_settings, &Settings::temperatureAgentChanged, this, syncLlm);
+    connect(m_settings, &Settings::temperatureDebugChanged, this, syncLlm);
+    connect(m_settings, &Settings::maxTokensChanged, this, syncLlm);
 
     ToolRegistry *reg = new ToolRegistry(this);
     m_toolRegistry = reg;
@@ -147,9 +206,13 @@ void MainView::setupAgent() {
     m_agentCore->setMaxToolRounds(m_settings->maxToolRounds());
     connect(m_settings, &Settings::systemPromptChanged, this, [this]() { m_agentCore->setSystemPromptBase(m_settings->systemPrompt()); });
     connect(m_settings, &Settings::maxToolRoundsChanged, this, [this]() { m_agentCore->setMaxToolRounds(m_settings->maxToolRounds()); });
+    connect(m_settings, &Settings::debugAllowShellChanged, this, [this]() {
+        if (normalizeChatMode(m_chatMode) == QLatin1String("debug"))
+            configureAgentForChatMode();
+    });
 
     connect(m_agentCore, &AgentCore::chunkReceived, this, [this](const QString &content, const QString &reasoning, bool isThinking) {
-        if (m_chatMode == "agent" || m_chatMode == "planning")
+        if (normalizeChatMode(m_chatMode) != QLatin1String("ask"))
             m_messagesModel.updateLastAiMessageAgent(reasoning, content, isThinking);
         else
             updateLastAiMessage(reasoning, content, isThinking);
@@ -173,7 +236,7 @@ void MainView::setupAgent() {
         }
         m_messagesModel.appendToolBlockToLastAiMessage(toolName, args, result, durationSec);
 
-        if (m_chatMode == "agent" || m_chatMode == "planning") {
+        if (normalizeChatMode(m_chatMode) != QLatin1String("ask")) {
             if (!m_messagesModel.isEmpty()) {
                 const int row = m_messagesModel.size() - 1;
                 QVariantMap last = m_messagesModel.at(row);
@@ -195,7 +258,7 @@ void MainView::setupAgent() {
     connect(m_agentCore, &AgentCore::finished, this, [this]() {
         setIsStreaming(false);
 
-        if ((m_chatMode == "agent" || m_chatMode == "planning") && !m_messagesModel.isEmpty()) {
+        if (normalizeChatMode(m_chatMode) != QLatin1String("ask") && !m_messagesModel.isEmpty()) {
             const int row = m_messagesModel.size() - 1;
             QVariantMap last = m_messagesModel.at(row);
             if (last.value("role").toString() == QLatin1String("ai")) {
@@ -229,6 +292,8 @@ void MainView::setupAgent() {
         });
     });
     connect(m_agentCore, &AgentCore::errorOccurred, this, &MainView::errorOccurred);
+
+    applyLlmForCurrentChatMode();
 
     connect(m_agentCore, &AgentCore::skillSaved, this, [this](const QString &title) {
         if (m_messagesModel.isEmpty()
@@ -343,7 +408,7 @@ void MainView::editAndRegenerate(int index, const QString &content) {
     }
 
     if (role == QLatin1String("user")) {
-        if (m_chatMode == "chat") {
+        if (normalizeChatMode(m_chatMode) == QLatin1String("ask")) {
             if (m_settings->chatOnline()) {
                 QVariantMap aiMsg;
                 aiMsg["role"]         = "ai";
@@ -402,7 +467,7 @@ void MainView::resendFrom(int index) {
         QVariantMap msg = m_messagesModel.at(i);
         if (msg["role"].toString() == "user") {
             QString userContent = msg["content"].toString();
-            if (m_chatMode == "chat") {
+            if (normalizeChatMode(m_chatMode) == QLatin1String("ask")) {
                 if (m_settings->chatOnline()) {
                     QVariantMap aiMsg;
                     aiMsg["role"]         = "ai";
@@ -457,7 +522,7 @@ void MainView::sendMessage(const QString &text) {
         }
     }
 
-    if (m_chatMode == "chat") {
+    if (normalizeChatMode(m_chatMode) == QLatin1String("ask")) {
         if (m_settings->chatOnline()) {
             // 联网：先添加 AI 占位并显示「搜索中」，异步 RAG 完成后显示「搜索结束」再发起 API
             QVariantMap aiMsg;
@@ -490,8 +555,8 @@ void MainView::startAgentCall(const QString &userInput) {
     m_messagesModel.appendOne(aiMsg);
     setIsStreaming(true);
 
-    QString mode = (m_chatMode == "planning") ? "planning" : "agent";
-    m_agentCore->setMode(mode);
+    applyLlmForCurrentChatMode();
+    configureAgentForChatMode();
 
     QVariantList msgs;
     const QVariantList full = m_messagesModel.toVariantList();
@@ -502,7 +567,7 @@ void MainView::startAgentCall(const QString &userInput) {
 }
 
 void MainView::stopGeneration() {
-    if (m_agentCore && (m_chatMode != "chat"))
+    if (m_agentCore && normalizeChatMode(m_chatMode) != QLatin1String("ask"))
         m_agentCore->stop();
     if (m_activeReply) {
         m_activeReply->abort();
@@ -552,6 +617,7 @@ void MainView::startRagFetchAndApiCall(const QString &userQuery) {
     // 若当前只有一个用户 query（无有效历史），则直接搜索，不再走改写流程
     if (userCountBefore > 1 && !conversationContext.isEmpty()
         && m_llmBackend && !m_settings->apiKey().trimmed().isEmpty()) {
+        applyLlmForCurrentChatMode();
         m_messagesModel.updateLastAiMessageRagSearchStatus("rewriting");
         const QString sysPrompt = QStringLiteral(
             "你是一个搜索查询改写助手。根据「主问题」「历史对话」和「当前问题」，输出适合搜索引擎的查询。\n"
@@ -673,6 +739,8 @@ void MainView::startApiCall(const QVariantList & /*history*/, const QString &rag
 }
 
 void MainView::doStartApiCall(const QString &ragContext) {
+    applyLlmForCurrentChatMode();
+
     // 构造请求
     // 构造请求：根据 apiUrl 推导出 /chat/completions 地址
     QUrl apiUrl(m_settings->apiUrl());
@@ -701,9 +769,10 @@ void MainView::doStartApiCall(const QString &ragContext) {
                      ("Bearer " + m_settings->apiKey()).toUtf8());
 
     QJsonObject body;
-    body["model"]  = m_settings->modelName();
+    const QString wm = normalizeChatMode(m_chatMode);
+    body["model"]  = m_settings->effectiveModelForChatMode(wm);
     body["stream"] = true;
-    body["temperature"] = m_settings->temperature();
+    body["temperature"] = m_settings->effectiveTemperatureForChatMode(wm);
     body["top_p"]       = m_settings->topP();
     body["max_tokens"]  = m_settings->maxTokens();
     // 始终请求思考过程，兼容多种 API：
@@ -975,6 +1044,7 @@ void MainView::saveCurrentSession() {
     QJsonObject root;
     root["id"]       = m_currentSession;
     root["name"]     = m_sessionName;
+    root["chatMode"] = m_chatMode;
     root["messages"] = arr;
 
     QFile f(m_history->sessionFilePath(m_currentSession));
@@ -994,6 +1064,14 @@ void MainView::loadSessionFile(const QString &id) {
     QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
     m_sessionName = root["name"].toString("新对话");
     emit sessionNameChanged();
+
+    if (root.contains(QStringLiteral("chatMode"))) {
+        const QString cm = normalizeChatMode(root[QStringLiteral("chatMode")].toString());
+        if (m_chatMode != cm) {
+            m_chatMode = cm;
+            emit chatModeChanged();
+        }
+    }
 
     m_messagesModel.clearAll();
     for (const QJsonValue &v : root["messages"].toArray()) {
@@ -1068,6 +1146,7 @@ void MainView::loadSessionFile(const QString &id) {
         }
         m_messagesModel.appendOne(msg);
     }
+    applyLlmForCurrentChatMode();
 }
 
 QVariantList MainView::buildApiMessages() const {
@@ -1169,7 +1248,7 @@ void MainView::requestSessionTitle() {
     });
 
     QJsonObject body;
-    body["model"] = m_settings->modelName();
+    body["model"] = m_settings->effectiveModelForChatMode(QStringLiteral("ask"));
     body["stream"] = false;
     body["temperature"] = 0.3;
     body["max_tokens"] = 32;

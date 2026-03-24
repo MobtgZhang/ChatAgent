@@ -15,6 +15,10 @@ LLMBackend::LLMBackend(QObject *parent) : QObject(parent) {
 void LLMBackend::setApiKey(const QString &key) { m_apiKey = key; }
 void LLMBackend::setApiUrl(const QString &url) { m_apiUrl = url; }
 void LLMBackend::setModel(const QString &model) { m_model = model; }
+void LLMBackend::setChatRequestParams(double temperature, int maxTokens) {
+    m_chatTemperature = qBound(0.0, temperature, 2.0);
+    m_chatMaxTokens = qBound(256, maxTokens, 32768);
+}
 void LLMBackend::setTools(const QVariantList &toolsSchema) { m_toolsSchema = toolsSchema; }
 
 QUrl LLMBackend::buildCompletionsUrl() const {
@@ -41,8 +45,8 @@ void LLMBackend::chatStream(const QVariantList &messages, const QString &systemP
     QJsonObject body;
     body["model"] = m_model;
     body["stream"] = true;
-    body["temperature"] = 0.7;
-    body["max_tokens"] = 4096;
+    body["temperature"] = m_chatTemperature;
+    body["max_tokens"] = m_chatMaxTokens;
     // 始终请求思考过程，兼容多种 API：
     // - DeepSeek: thinking.type = enabled
     // - Qwen/通义: enable_thinking = true

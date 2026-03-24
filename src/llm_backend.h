@@ -24,6 +24,7 @@ public:
     void setApiKey(const QString &key);
     void setApiUrl(const QString &url);
     void setModel(const QString &model);
+    void setChatRequestParams(double temperature, int maxTokens);
 
     // 工具 schema（OpenAI 格式）
     void setTools(const QVariantList &toolsSchema);
@@ -60,6 +61,8 @@ private:
     QString m_apiKey;
     QString m_apiUrl;
     QString m_model;
+    double m_chatTemperature = 0.7;
+    int m_chatMaxTokens = 4096;
     QVariantList m_toolsSchema;
 
     QNetworkAccessManager *m_nam;

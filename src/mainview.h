@@ -86,7 +86,7 @@ private:
     MessageModel              m_messagesModel;
     QString                   m_currentSession;
     QString                   m_sessionName;
-    QString                   m_chatMode = "chat";
+    QString                   m_chatMode = QStringLiteral("ask");
     bool                      m_isStreaming = false;
     QPointer<QNetworkReply>   m_activeReply;
     QPointer<QNetworkReply>   m_titleReply;
@@ -106,6 +106,8 @@ private:
 
     void   saveCurrentSession();
     void   loadSessionFile(const QString &id);
+    void   applyLlmForCurrentChatMode();
+    void   configureAgentForChatMode();
     void   startApiCall(const QVariantList &history, const QString &ragContext = QString());
     void   startAgentCall(const QString &userInput);
     void   startRagFetchAndApiCall(const QString &userQuery);
