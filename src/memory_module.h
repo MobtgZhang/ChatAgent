@@ -56,8 +56,8 @@ public:
     Q_INVOKABLE void refreshLongTerm();
     QVariantList sopsList() const { return m_sopsList; }
 
-    // 构建注入到 prompt 的上下文
-    QString buildContextForPrompt() const;
+    // 构建注入到 prompt 的上下文（userQuery 空则按使用频率取 SOP；否则按关键词相关性 Top-K，总长约 maxChars）
+    QString buildContextForPrompt(const QString &userQuery = QString(), int maxChars = 4500) const;
 
 signals:
     void shortTermMessagesChanged();

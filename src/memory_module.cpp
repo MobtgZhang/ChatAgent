@@ -11,6 +11,8 @@
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QDebug>
+#include <QRegularExpression>
+#include <algorithm>
 
 struct MemoryModule::Db {
     QSqlDatabase db;
@@ -48,6 +50,9 @@ void MemoryModule::initDb() {
         q.exec("CREATE TABLE IF NOT EXISTS lessons ("
                "id INTEGER PRIMARY KEY AUTOINCREMENT, event_summary TEXT, lesson TEXT, "
                "confidence REAL DEFAULT 0.8, created_at INTEGER)");
+        q.exec("CREATE INDEX IF NOT EXISTS idx_sops_usage_updated ON sops(usage_count, updated_at)");
+        q.exec("CREATE INDEX IF NOT EXISTS idx_lessons_created ON lessons(created_at)");
+        q.exec("CREATE INDEX IF NOT EXISTS idx_facts_updated ON facts(updated_at)");
     }
 }
 
@@ -270,37 +275,90 @@ QVariantList MemoryModule::getLessons(int limit) const {
     return out;
 }
 
-QString MemoryModule::buildContextForPrompt() const {
+QString MemoryModule::buildContextForPrompt(const QString &userQuery, int maxChars) const {
+    maxChars = qBound(1500, maxChars, 12000);
     QStringList lines;
+    int used = 0;
+    auto appendLine = [&lines, &used, maxChars](const QString &line) -> bool {
+        if (used + line.length() + 1 > maxChars)
+            return false;
+        lines << line;
+        used += line.length() + 1;
+        return true;
+    };
 
     if (!m_longTerm.isEmpty()) {
-        lines << "\n[长期记忆 L2 - 用户偏好与事实]";
-        for (const QVariant &v : m_longTerm) {
-            QVariantMap m = v.toMap();
-            lines << QString("- %1: %2").arg(m["key"].toString(), m["value"].toString());
+        if (appendLine(QStringLiteral("\n[长期记忆 L2 - 用户偏好与事实]"))) {
+            for (const QVariant &v : m_longTerm) {
+                QVariantMap m = v.toMap();
+                QString row = QStringLiteral("- %1: %2").arg(m["key"].toString(), m["value"].toString());
+                if (!appendLine(row))
+                    break;
+            }
         }
     }
 
-    // 注入 SOP 索引（自进化）
-    QVariantList sopsList = listSops(QString());
-    if (!sopsList.isEmpty()) {
-        lines << "\n[长期记忆 L3 - 已学 SOP]";
-        for (const QVariant &v : sopsList) {
-            QVariantMap m = v.toMap();
-            lines << QString("- %1 (调用%2次): %3")
-                     .arg(m["name"].toString())
-                     .arg(m["usage_count"].toInt())
-                     .arg(m["summary"].toString().left(120));
+    struct SopRow {
+        QString name;
+        QString summary;
+        int usage = 0;
+        double score = 0;
+    };
+    QList<SopRow> sopRows;
+    if (m_db && m_db->ok) {
+        QSqlQuery q(m_db->db);
+        q.exec("SELECT name, summary, usage_count, content FROM sops");
+        while (q.next()) {
+            SopRow r;
+            r.name = q.value(0).toString();
+            r.summary = q.value(1).toString();
+            r.usage = q.value(2).toInt();
+            const QString content = q.value(3).toString();
+            const QString hay = (r.name + QLatin1Char(' ') + r.summary + QLatin1Char(' ') + content).toLower();
+            double sc = r.usage * 0.15;
+            const QString qtrim = userQuery.trimmed();
+            if (qtrim.size() >= 2) {
+                const QStringList words = qtrim.split(
+                    QRegularExpression(QStringLiteral("[\\s,，。、！？!?；;:：\\-]+")), Qt::SkipEmptyParts);
+                for (const QString &w : words) {
+                    if (w.length() < 2) continue;
+                    const QString lw = w.toLower();
+                    int c = 0;
+                    for (int pos = 0; (pos = hay.indexOf(lw, pos, Qt::CaseInsensitive)) >= 0; pos += lw.length())
+                        ++c;
+                    if (c > 0) {
+                        sc += c * (r.name.contains(lw, Qt::CaseInsensitive) ? 4.0 : 2.0);
+                    }
+                }
+            } else {
+                sc += r.usage * 0.5;
+            }
+            r.score = sc;
+            sopRows.append(r);
+        }
+    }
+    std::sort(sopRows.begin(), sopRows.end(),
+              [](const SopRow &a, const SopRow &b) { return a.score > b.score; });
+
+    if (!sopRows.isEmpty() && appendLine(QStringLiteral("\n[长期记忆 L3 - 已学 SOP]"))) {
+        int sopCap = 12;
+        for (const SopRow &r : sopRows) {
+            if (--sopCap < 0) break;
+            QString row = QStringLiteral("- %1 (调用%2次): %3")
+                              .arg(r.name)
+                              .arg(r.usage)
+                              .arg(r.summary.left(120));
+            if (!appendLine(row))
+                break;
         }
     }
 
-    // 注入最近教训
     QVariantList lessonsList = getLessons(5);
-    if (!lessonsList.isEmpty()) {
-        lines << "\n[教训 - 避免重复错误]";
+    if (!lessonsList.isEmpty() && appendLine(QStringLiteral("\n[教训 - 避免重复错误]"))) {
         for (const QVariant &v : lessonsList) {
             QVariantMap m = v.toMap();
-            lines << QString("- %1").arg(m["lesson"].toString());
+            if (!appendLine(QStringLiteral("- %1").arg(m["lesson"].toString())))
+                break;
         }
     }
 
